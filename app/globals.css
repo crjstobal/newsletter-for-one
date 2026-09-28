@@ -1,26 +1,154 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Newsletter for One design tokens.
+ * Paper and ink are cool neutrals; the only saturated color is the violet of a date stamp,
+ * reserved for verified dates and the primary action.
+ */
+@theme {
+  --font-sans: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: #f6f7f9;
+  --color-sheet: #ffffff;
+  --color-ink: #16181d;
+  --color-rule: #dadde4;
+  --color-stamp: #5b3fc4;
+  --color-stamp-soft: #ece8fb;
+  --color-fresh: #1f7a4d;
+  --color-caution: #a86b12;
+
+  /* Cool neutral greys replace Tailwind's warm stone so every surface shares one temperature. */
+  --color-stone-50: #f6f7f9;
+  --color-stone-100: #eceef2;
+  --color-stone-200: #dadde4;
+  --color-stone-300: #c3c7d1;
+  --color-stone-400: #9aa0ad;
+  --color-stone-500: #6b7280;
+  --color-stone-600: #4e5461;
+  --color-stone-700: #3a3f4a;
+  --color-stone-800: #262a33;
+  --color-stone-900: #16181d;
+  --color-stone-950: #0f1115;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --color-paper: #0f1115;
+    --color-sheet: #16181d;
+    --color-ink: #e8e9ee;
+    --color-rule: #2c303a;
+    --color-stamp: #a18cff;
+    --color-stamp-soft: #231d3d;
+    --color-fresh: #5cc28f;
+    --color-caution: #e0a64a;
   }
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01";
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-stamp);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* The rubber date stamp: the one ornamental element in the identity. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.15em 0.55em;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  color: var(--color-stamp);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  transform: rotate(-2deg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 15%, transparent);
+  opacity: 0.92;
+}
+
+.stamp-land {
+  animation: stamp-land 420ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+@keyframes stamp-land {
+  from {
+    transform: rotate(-9deg) scale(1.6);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(-2deg) scale(1);
+    opacity: 0.92;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-land {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Buttons: one system, sized for comfortable clicking (44px minimum target). */
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.975rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition: background-color 120ms, border-color 120ms, filter 120ms;
+    cursor: pointer;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-stamp);
+    color: #fff;
+  }
+  .btn-primary:not(:disabled):hover {
+    filter: brightness(1.1);
+  }
+  .btn-secondary {
+    background: var(--color-sheet);
+    color: var(--color-ink);
+    border: 1px solid var(--color-rule);
+  }
+  .btn-secondary:not(:disabled):hover {
+    border-color: var(--color-stone-400);
+  }
+  .btn-lg {
+    min-height: 3.25rem;
+    padding: 0.8rem 1.6rem;
+    font-size: 1.05rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn-primary {
+    color: #0f1115;
+  }
 }
