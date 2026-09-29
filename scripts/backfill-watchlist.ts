@@ -1,12 +1,12 @@
 /** One-off: adds coreQuery and watchlist to newsletters created before those fields existed. */
 import { nebiusLLM } from "../lib/adapters/nebius";
 import { newTracker } from "../lib/core/ports";
-import { fileStore } from "../lib/store";
+import { store } from "../lib/store";
 
 async function main() {
   const tracker = newTracker();
   const llm = nebiusLLM(tracker);
-  for (const nl of await fileStore.listNewsletters()) {
+  for (const nl of await store.listNewsletters()) {
     if (nl.profile.watchlist?.length) continue;
     const out = await llm.json<{ coreQuery: string; watchlist: string[] }>("planner", [
       {
@@ -18,7 +18,7 @@ async function main() {
     ], { note: "backfill watchlist" });
     nl.profile.coreQuery = out.coreQuery;
     nl.profile.watchlist = out.watchlist;
-    await fileStore.saveNewsletter(nl);
+    await store.saveNewsletter(nl);
     console.log(nl.profile.name, "|", out.coreQuery, "|", out.watchlist.join(", "));
   }
   console.log(`$${tracker.llm.reduce((a, c) => a + c.costUsd, 0).toFixed(5)}`);

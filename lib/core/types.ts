@@ -143,4 +143,5 @@ export type Newsletter = {
   memory: ReaderMemory;
   createdAt: string;
   lastIssueDate?: string;
+  autoIssues?: boolean; // written automatically by the scheduled worker when due
 };

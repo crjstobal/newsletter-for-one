@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { fileStore } from "@/lib/store";
+import { store } from "@/lib/store";
 import { NewslettersMenu } from "./NewslettersMenu";
 
 export function Wordmark({ className = "" }: { className?: string }) {
@@ -20,7 +20,7 @@ const LINKS = [
 
 export async function SiteNav() {
   await connection();
-  const items = (await fileStore.listNewsletters())
+  const items = (await store.listNewsletters())
     .sort((a, b) => (b.lastIssueDate ?? b.createdAt).localeCompare(a.lastIssueDate ?? a.createdAt))
     .map((n) => ({ id: n.id, name: n.profile.name, lastIssue: n.lastIssueDate, cadence: n.profile.cadence }));
 

@@ -3,7 +3,7 @@ import type { CandidateStatus, Issue, Newsletter, QualityCheck, Story, Trace, Tr
 import { planQueries } from "./planner";
 import { triage, type Candidate, type Scored } from "./triage";
 import { writeIssue } from "./editor";
-import { checkMemory } from "./dedup";
+import { checkMemory, type Verdict } from "./dedup";
 
 export const SHORTLIST = 24;
 export const MIN_SCORE = 6;
@@ -181,7 +181,12 @@ export async function produceIssue(
   t = Date.now();
   mark = tracker.llm.length;
   progress("memory", `comparing ${shortlist.length} candidates with ${nl.memory.covered.length} sent stories`);
-  const verdicts = await checkMemory(llm, shortlist, nl.memory.covered);
+  // A failure here must not sink the issue: exact event-key matching (step 5) still applies.
+  let memoryFailed: string | undefined;
+  const verdicts = await checkMemory(llm, shortlist, nl.memory.covered).catch((err) => {
+    memoryFailed = (err as Error).message.slice(0, 120);
+    return new Map<number, Verdict>();
+  });
   const sameAsNote = new Map<number, string>();
   const byIdShort = new Map(shortlist.map((s) => [s.id, s]));
   const coveredByKey = new Map(nl.memory.covered.map((c) => [c.key, c]));
@@ -205,7 +210,9 @@ export async function produceIssue(
   const fresh = shortlist.filter((s) => status.get(s.id) === "shortlisted");
   steps.push({
     key: "memory", label: "Check memory", tool: llm.models.dedup, ms: Date.now() - t, costUsd: llmCost(mark),
-    summary: `${count("already-sent")} already sent, ${count("duplicate")} duplicates, ${fresh.length} new`,
+    summary: memoryFailed
+      ? `check failed, only exact matches filtered (${memoryFailed})`
+      : `${count("already-sent")} already sent, ${count("duplicate")} duplicates, ${fresh.length} new`,
   });
 
   // 7. Edit. Variety is per publisher: each YouTube channel or subreddit counts on its own.
@@ -259,7 +266,10 @@ export async function produceIssue(
     searches,
     candidates: traceCandidates,
     llmCalls: tracker.llm,
-    checks: qualityChecks(written.stories, written.quiet, traceCandidates, searches.filter((s) => s.error).length, since, profile.storyCount),
+    checks: [
+      ...(memoryFailed ? [{ level: "warn" as const, message: "Memory check failed: repeats were only filtered by exact match, check nothing was sent before" }] : []),
+      ...qualityChecks(written.stories, written.quiet, traceCandidates, searches.filter((s) => s.error).length, since, profile.storyCount),
+    ],
     totals: {
       costUsd: nebiusUsd + tavilyUsd,
       nebiusUsd,

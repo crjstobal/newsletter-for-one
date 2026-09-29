@@ -1,0 +1,56 @@
+# Once a day, launches the worker as a Nebius Serverless AI Job on a small CPU VM.
+# Nebius jobs have no built-in schedule, so this cron is the trigger. The VM is billed only
+# while the job runs (a few minutes).
+#
+# Inactive until the repository variable NEBIUS_JOBS_ENABLED is "true". It also needs:
+#   variables: NEBIUS_PROJECT_ID, NEBIUS_SA_ID, NEBIUS_PUBLIC_KEY_ID
+#   secrets:   NEBIUS_SA_PRIVATE_KEY (PEM), GHCR_TOKEN (read:packages),
+#              DATABASE_URL, NEBIUS_API_KEY, TAVILY_API_KEY
+name: Scheduled issues
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC, 08:00 in Madrid
+  workflow_dispatch:
+
+jobs:
+  launch:
+    if: vars.NEBIUS_JOBS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the Nebius AI Cloud CLI
+        run: |
+          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+          echo "$HOME/.nebius/bin" >> "$GITHUB_PATH"
+
+      - name: Authenticate as the service account
+        env:
+          PRIVATE_KEY: ${{ secrets.NEBIUS_SA_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$PRIVATE_KEY" > "$RUNNER_TEMP/sa.pem"
+          nebius profile create \
+            --profile ci \
+            --endpoint api.nebius.cloud \
+            --service-account-id "${{ vars.NEBIUS_SA_ID }}" \
+            --public-key-id "${{ vars.NEBIUS_PUBLIC_KEY_ID }}" \
+            --private-key-file "$RUNNER_TEMP/sa.pem" \
+            --parent-id "${{ vars.NEBIUS_PROJECT_ID }}"
+          rm "$RUNNER_TEMP/sa.pem"
+
+      - name: Launch the worker job
+        run: |
+          nebius ai job create \
+            --profile ci \
+            --name "nfo-worker-${{ github.run_id }}" \
+            --image "ghcr.io/${{ github.repository }}-worker:latest" \
+            --registry-username "${{ github.repository_owner }}" \
+            --registry-password "${{ secrets.GHCR_TOKEN }}" \
+            --platform cpu-d3 \
+            --preset 2vcpu-8gb \
+            --disk-size 50Gi \
+            --timeout 1h \
+            --env "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --env "NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}" \
+            --env "TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}" \
+            --env "DAILY_CAP_EUR=5" \
+            --async

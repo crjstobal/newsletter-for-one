@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { fileStore } from "@/lib/store";
+import { store } from "@/lib/store";
 import type { Issue, Newsletter } from "@/lib/core/types";
 import { DEFAULT_MODELS } from "@/lib/adapters/nebius";
 import { HeroForm } from "./components/HeroForm";
@@ -8,10 +8,10 @@ import { Stamp } from "./components/ui";
 
 /** The most convincing real issue on disk: most stories, all dated. */
 async function showcase(): Promise<{ issue: Issue; newsletter: Newsletter } | null> {
-  const newsletters = await fileStore.listNewsletters();
+  const newsletters = await store.listNewsletters();
   let best: { issue: Issue; newsletter: Newsletter; rank: number } | null = null;
   for (const newsletter of newsletters) {
-    for (const issue of await fileStore.listIssues(newsletter.id)) {
+    for (const issue of await store.listIssues(newsletter.id)) {
       if (!issue.trace || issue.quiet) continue;
       const dated = issue.stories.filter((s) => s.dateFrom === "page" || s.dateFrom === "search").length;
       const rank = dated * 10 + new Set(issue.stories.map((s) => s.source)).size;
@@ -28,7 +28,7 @@ export default async function Home() {
   const demo = await showcase();
   const tr = demo?.issue.trace;
   const step = (key: string) => tr?.steps.find((s) => s.key === key);
-  const learned = (await fileStore.listNewsletters()).find((n) => n.memory.likes.length || n.memory.dislikes.length)?.memory;
+  const learned = (await store.listNewsletters()).find((n) => n.memory.likes.length || n.memory.dislikes.length)?.memory;
 
   const HOW = [
     {

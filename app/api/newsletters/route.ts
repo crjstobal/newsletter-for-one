@@ -1,8 +1,8 @@
 import { createNewsletter } from "@/lib/service";
-import { fileStore } from "@/lib/store";
+import { store } from "@/lib/store";
 
 export async function GET() {
-  const list = await fileStore.listNewsletters();
+  const list = await store.listNewsletters();
   return Response.json(list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 }
 
@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   try {
     return Response.json(await createNewsletter(description.trim(), language || undefined));
   } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 500 });
+    const budget = (err as Error).name === "BudgetExceeded";
+    return Response.json({ error: (err as Error).message }, { status: budget ? 429 : 500 });
   }
 }

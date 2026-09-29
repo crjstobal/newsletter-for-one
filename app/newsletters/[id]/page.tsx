@@ -167,7 +167,8 @@ export default function NewsletterPage() {
               <h1 className="text-4xl font-extrabold tracking-tight">{nl.profile.name}</h1>
               <p className="mt-1 text-stone-600 dark:text-stone-400">{nl.profile.topic}</p>
               <p className="mt-2 text-sm text-stone-500">
-                {nl.profile.cadence === "daily" ? "Daily" : "Weekly"}, up to {nl.profile.storyCount} stories, written in{" "}
+                {nl.autoIssues ? "Automatic, " : "Manual, "}
+                {nl.profile.cadence === "daily" ? "daily" : "weekly"}, up to {nl.profile.storyCount} stories, written in{" "}
                 {LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language}, searched in{" "}
                 {(nl.profile.searchLanguages ?? ["en"]).map((l) => LANGUAGE_NAMES[l] ?? l).join(" and ")}
               </p>
@@ -230,6 +231,16 @@ export default function NewsletterPage() {
             <Settings
               key={nl.id + JSON.stringify(nl.profile) + JSON.stringify(nl.memory)}
               newsletter={nl}
+              onAutoIssues={async (on) => {
+                await fetch(`/api/newsletters/${id}/schedule`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ autoIssues: on }),
+                });
+                await load();
+                router.refresh();
+                setToast(on ? "Automatic issues on" : "Automatic issues off");
+              }}
               onSave={async (profile, memory) => {
                 await fetch(`/api/newsletters/${id}/memory`, {
                   method: "PATCH",

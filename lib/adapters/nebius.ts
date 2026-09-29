@@ -92,12 +92,22 @@ export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAU
     models,
     async json<T>(role: Role, messages: ChatMessage[], opts?: { maxTokens?: number; note?: string }) {
       const maxTokens = opts?.maxTokens ?? 8000;
+      let content = "";
       try {
-        return extractJSON<T>(await call(role, messages, maxTokens, opts?.note));
+        content = await call(role, messages, maxTokens, opts?.note);
+        return extractJSON<T>(content);
       } catch (err) {
-        // One retry: reasoning models occasionally truncate or emit stray prose.
+        // One corrective retry: show the model its broken output (reasoning models sometimes
+        // truncate, add prose, or echo the schema instead of filling it in).
         console.warn(`[nebius] ${role} retry after: ${(err as Error).message.slice(0, 160)}`);
-        return extractJSON<T>(await call(role, messages, maxTokens * 2, `${opts?.note ?? role} (retry)`));
+        const repair: ChatMessage[] = content
+          ? [
+              ...messages,
+              { role: "assistant", content: content.slice(0, 4000) },
+              { role: "user", content: "That was not valid JSON. Reply again with only the JSON object, using real values (no type names, no comments, no prose)." },
+            ]
+          : messages;
+        return extractJSON<T>(await call(role, repair, maxTokens * 2, `${opts?.note ?? role} (retry)`));
       }
     },
   };

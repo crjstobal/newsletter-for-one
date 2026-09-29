@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { fileStore } from "@/lib/store";
+import { store } from "@/lib/store";
 import type { Issue, Newsletter } from "@/lib/core/types";
 import { Collage, IssueBars } from "../components/visuals";
 import { themesOf } from "../components/themes";
 import { LANGUAGE_NAMES } from "../components/examples";
+import { SchedulePanel } from "../components/SchedulePanel";
 
 export const metadata = { title: "Your newsletters | Newsletter for One" };
 
@@ -13,7 +14,7 @@ type Row = { nl: Newsletter; issues: Issue[] };
 export default async function Newsletters() {
   await connection();
   const rows: Row[] = await Promise.all(
-    (await fileStore.listNewsletters()).map(async (nl) => ({ nl, issues: await fileStore.listIssues(nl.id) })),
+    (await store.listNewsletters()).map(async (nl) => ({ nl, issues: await store.listIssues(nl.id) })),
   );
   rows.sort((a, b) => (b.issues[0]?.id ?? b.nl.createdAt).localeCompare(a.issues[0]?.id ?? a.nl.createdAt));
 
@@ -29,6 +30,10 @@ export default async function Newsletters() {
         <Link href="/newsletters/new" className="btn btn-primary">
           Start a newsletter
         </Link>
+      </div>
+
+      <div className="mt-8">
+        <SchedulePanel />
       </div>
 
       {rows.length === 0 ? (
@@ -79,7 +84,8 @@ export default async function Newsletters() {
                       {issues.length > 1 && <IssueBars issues={issues} />}
                     </div>
                     <p className="mt-3 text-xs text-stone-500">
-                      {nl.profile.cadence === "daily" ? "Daily" : "Weekly"}, written in {LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language}
+                      {nl.autoIssues ? "Automatic, " : "Manual, "}
+                      {nl.profile.cadence === "daily" ? "daily" : "weekly"}, written in {LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language}
                       {last ? `, last issue ${last.date}` : ""}
                     </p>
                   </div>

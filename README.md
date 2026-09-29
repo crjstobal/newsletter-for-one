@@ -43,14 +43,29 @@ $0.19: $0.14 of Tavily search and $0.05 of Nemotron.
 
 ## Setup
 
-Requirements: Node 22+, a Nebius Token Factory API key, a Tavily API key.
+Requirements: Node 22+, PostgreSQL 16+, a Nebius Token Factory API key, a Tavily API key.
 
 ```bash
 npm install
-export NEBIUS_API_KEY=...   # or let lib/secrets.ts read it from AWS SSM
+createdb newsletter_for_one  # or set DATABASE_URL to any Postgres
+npm run db:migrate
+export NEBIUS_API_KEY=...    # or let lib/secrets.ts read it from AWS SSM
 export TAVILY_API_KEY=...
-npm run dev                 # web app on http://localhost:3000
+npm run dev                  # web app on http://localhost:3000
 ```
+
+## Automatic issues and the spending cap
+
+Newsletters with **automatic issues** on are written by a worker when their next issue is due
+(daily or weekly from the last one). `npm run worker` runs it once. In production it runs as a
+**Nebius Serverless AI Job** on a small CPU VM, launched once a day by
+[`.github/workflows/schedule.yml`](.github/workflows/schedule.yml) (Nebius jobs have no built-in
+schedule) from the image built by [`worker-image.yml`](.github/workflows/worker-image.yml).
+The schedule stays inactive until the repository variable `NEBIUS_JOBS_ENABLED` is `true`.
+
+Everything that costs money (issues, briefs, learning from votes) goes through a **daily cap**
+(`DAILY_CAP_EUR`, default 5). Work reserves its estimated cost before starting and records its
+real cost when done, so neither the web app, the command line nor the worker can go over it.
 
 Command line:
 
@@ -58,6 +73,7 @@ Command line:
 npm run cli -- create "A weekly newsletter about ..."
 npm run cli -- issue <newsletterId>
 npm run cli -- vote <issueId> 0:up 2:down:"too basic"
+npm run worker               # write every automatic newsletter that is due
 ```
 
 Secrets are read from environment variables, with an AWS SSM Parameter Store fallback for
@@ -69,6 +85,9 @@ local development. No key is ever stored in the repository.
 lib/core/       vendor-free pipeline: profile, planner, triage, dedup, editor, memory
 lib/adapters/   Nebius Token Factory (OpenAI-compatible), Tavily, page dates and images
 lib/service.ts  application service: wires adapters, core and storage
+lib/budget.ts   daily spending cap (reserve, then settle the real cost)
+lib/worker.ts   scheduled worker: writes the automatic newsletters that are due
+db/migrations/  Postgres schema
 app/            Next.js web app and API routes
 scripts/        command line and one-off maintenance scripts
 ```

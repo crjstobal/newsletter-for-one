@@ -1,12 +1,13 @@
 import { nebiusLLM } from "./adapters/nebius";
 import { tavilySearch } from "./adapters/tavily";
 import { pageDates } from "./adapters/dates";
-import { newTracker } from "./core/ports";
+import { newTracker, type Tracker } from "./core/ports";
 import type { Issue, Newsletter, Profile, ReaderMemory } from "./core/types";
 import { buildProfile } from "./core/profile";
 import { produceIssue, type Progress } from "./core/issue";
 import { emptyMemory, learnFromFeedback, rememberIssue, type Reaction } from "./core/memory";
-import { fileStore, type Store } from "./store";
+import { store as defaultStore, type Store } from "./store";
+import { reserve, settle, type SpendKind } from "./budget";
 
 /** Application service: wires adapters and storage around the vendor-free core. */
 
@@ -15,16 +16,35 @@ function deps() {
   return { tracker, llm: nebiusLLM(tracker), search: tavilySearch(tracker), dates: pageDates() };
 }
 
+const costOf = (tracker: Tracker) =>
+  tracker.llm.reduce((a, c) => a + c.costUsd, 0) + tracker.searches.reduce((a, s) => a + s.costUsd, 0);
+
+/**
+ * Runs paid work under the daily cap: reserves its estimate first (throws BudgetExceeded if the
+ * day's budget can't cover it), then records what it really cost, even if it failed halfway.
+ */
+async function metered<T>(kind: SpendKind, newsletterId: string | undefined, work: (d: ReturnType<typeof deps>) => Promise<T>, issueIdOf?: (r: T) => string) {
+  const reservation = await reserve(kind, { newsletterId });
+  const d = deps();
+  try {
+    const result = await work(d);
+    await settle(reservation, costOf(d.tracker), { issueId: issueIdOf?.(result) });
+    return result;
+  } catch (err) {
+    await settle(reservation, costOf(d.tracker));
+    throw err;
+  }
+}
+
 const slug = (s: string) =>
   s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 export async function createNewsletter(
   description: string,
   language?: string,
-  store: Store = fileStore,
+  store: Store = defaultStore,
 ): Promise<Newsletter> {
-  const { llm } = deps();
-  const profile = await buildProfile(llm, description, language);
+  const profile = await metered("brief", undefined, ({ llm }) => buildProfile(llm, description, language));
   const nl: Newsletter = {
     id: `${slug(profile.name)}-${Date.now().toString(36)}`,
     description,
@@ -36,10 +56,10 @@ export async function createNewsletter(
   return nl;
 }
 
-export async function runIssue(newsletterId: string, progress?: Progress, store: Store = fileStore): Promise<Issue> {
+export async function runIssue(newsletterId: string, progress?: Progress, store: Store = defaultStore): Promise<Issue> {
   const nl = await store.getNewsletter(newsletterId);
   if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
-  const issue = await produceIssue(deps(), nl, progress);
+  const issue = await metered("issue", newsletterId, (d) => produceIssue(d, nl, progress), (i) => i.id);
   issue.number = (await store.listIssues(newsletterId)).length + 1;
   await store.saveIssue(issue);
   await store.saveNewsletter({ ...nl, memory: rememberIssue(nl.memory, issue), lastIssueDate: issue.date });
@@ -49,7 +69,7 @@ export async function runIssue(newsletterId: string, progress?: Progress, store:
 export type Vote = { storyIndex: number; vote: "up" | "down"; note?: string };
 
 /** Records votes on an issue and folds them into the reader's preference model. */
-export async function giveFeedback(issueId: string, votes: Vote[], store: Store = fileStore): Promise<Newsletter> {
+export async function giveFeedback(issueId: string, votes: Vote[], store: Store = defaultStore): Promise<Newsletter> {
   const issue = await store.getIssue(issueId);
   if (!issue) throw new Error(`Issue ${issueId} not found`);
   const nl = await store.getNewsletter(issue.newsletterId);
@@ -64,15 +84,14 @@ export async function giveFeedback(issueId: string, votes: Vote[], store: Store 
   }
   await store.saveIssue(issue);
 
-  const { llm } = deps();
-  const memory = await learnFromFeedback(llm, nl.profile, nl.memory, reactions);
+  const memory = await metered("feedback", nl.id, ({ llm }) => learnFromFeedback(llm, nl.profile, nl.memory, reactions));
   const updated = { ...nl, memory };
   await store.saveNewsletter(updated);
   return updated;
 }
 
 /** Clears what was learned about the reader, keeping the brief. Handy while testing. */
-export async function resetMemory(newsletterId: string, store: Store = fileStore): Promise<Newsletter> {
+export async function resetMemory(newsletterId: string, store: Store = defaultStore): Promise<Newsletter> {
   const nl = await store.getNewsletter(newsletterId);
   if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
   const updated = { ...nl, memory: emptyMemory(), lastIssueDate: undefined };
@@ -81,7 +100,7 @@ export async function resetMemory(newsletterId: string, store: Store = fileStore
 }
 
 /** Reader-editable settings. Only known fields are accepted. */
-export async function updateProfile(newsletterId: string, patch: Partial<Profile>, store: Store = fileStore): Promise<Newsletter> {
+export async function updateProfile(newsletterId: string, patch: Partial<Profile>, store: Store = defaultStore): Promise<Newsletter> {
   const nl = await store.getNewsletter(newsletterId);
   if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
   const clean = (xs: unknown) => (Array.isArray(xs) ? xs.map((x) => String(x).trim()).filter(Boolean) : undefined);
@@ -114,7 +133,7 @@ export async function updateProfile(newsletterId: string, patch: Partial<Profile
 export async function updateMemory(
   newsletterId: string,
   patch: Partial<Pick<ReaderMemory, "likes" | "dislikes" | "notes" | "covered">>,
-  store: Store = fileStore,
+  store: Store = defaultStore,
 ): Promise<Newsletter> {
   const nl = await store.getNewsletter(newsletterId);
   if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
@@ -129,6 +148,15 @@ export async function updateMemory(
     memory.covered = memory.covered.filter((c) => keep.has(c.key));
   }
   const updated = { ...nl, memory };
+  await store.saveNewsletter(updated);
+  return updated;
+}
+
+/** Turns scheduled, automatic issues on or off for one newsletter. */
+export async function setAutoIssues(newsletterId: string, on: boolean, store: Store = defaultStore): Promise<Newsletter> {
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  const updated = { ...nl, autoIssues: on };
   await store.saveNewsletter(updated);
   return updated;
 }

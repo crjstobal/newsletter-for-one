@@ -6,7 +6,7 @@
  *   npm run cli -- list
  */
 import { createNewsletter, giveFeedback, runIssue, type Vote } from "../lib/service";
-import { fileStore } from "../lib/store";
+import { store } from "../lib/store";
 import type { Issue } from "../lib/core/types";
 
 function printIssue(issue: Issue) {
@@ -42,7 +42,7 @@ async function main() {
     const nl = await giveFeedback(issueId, votes);
     console.log(JSON.stringify({ likes: nl.memory.likes, dislikes: nl.memory.dislikes, notes: nl.memory.notes }, null, 2));
   } else if (cmd === "list") {
-    for (const nl of await fileStore.listNewsletters()) console.log(`${nl.id}  ${nl.profile.name}  (last: ${nl.lastIssueDate ?? "never"})`);
+    for (const nl of await store.listNewsletters()) console.log(`${nl.id}  ${nl.profile.name}  (last: ${nl.lastIssueDate ?? "never"})`);
   } else {
     console.log("usage: create <description> | issue <newsletterId> | vote <issueId> idx:up|down[:note]... | list");
   }

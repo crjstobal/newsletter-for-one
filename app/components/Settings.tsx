@@ -25,9 +25,11 @@ const split = (items: Item[]) => ({
 export function Settings({
   newsletter,
   onSave,
+  onAutoIssues,
 }: {
   newsletter: Newsletter;
   onSave: (profile: Partial<Profile>, memory: MemoryPatch) => Promise<void>;
+  onAutoIssues: (on: boolean) => Promise<void>;
 }) {
   const initial = { ...newsletter.profile, blockedDomains: newsletter.profile.blockedDomains ?? [] };
   const initialMemory: MemoryPatch = {
@@ -75,6 +77,14 @@ export function Settings({
       </Section>
 
       <Section title="Delivery" text="How often an issue is written, how long it is, and in which language.">
+        <div className="mb-6 rounded-lg bg-paper p-4">
+          <Switch
+            checked={Boolean(newsletter.autoIssues)}
+            onChange={(v) => onAutoIssues(v)}
+            label="Write issues automatically"
+            help="When on, the scheduled worker writes the next issue when it's due (every day or every week, from the last issue). It counts towards the daily spending cap like everything else. Saved immediately."
+          />
+        </div>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="How often">
             <Segmented
