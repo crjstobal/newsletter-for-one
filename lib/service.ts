@@ -2,7 +2,10 @@ import { nebiusLLM } from "./adapters/nebius";
 import { tavilySearch } from "./adapters/tavily";
 import { pageDates } from "./adapters/dates";
 import { newTracker, type Tracker } from "./core/ports";
-import type { Issue, Newsletter, Profile, ReaderMemory } from "./core/types";
+import { normalizeStyle, type Delivery, type Issue, type Newsletter, type Profile, type ReaderMemory, type Style } from "./core/types";
+import { addDays, cleanDelivery, dateIn, deliveryOf, gapDays } from "./core/schedule";
+import { addFeed, listSubscriptions, pgSubscriptions, readingSignals, removeSubscription } from "./subscriptions";
+import { hostOf } from "./core/ports";
 import { buildProfile } from "./core/profile";
 import { produceIssue, type Progress } from "./core/issue";
 import { emptyMemory, learnFromFeedback, rememberIssue, type Reaction } from "./core/memory";
@@ -51,6 +54,8 @@ export async function createNewsletter(
     profile,
     memory: emptyMemory(),
     createdAt: new Date().toISOString(),
+    // A newsletter writes itself on its delivery days; Pause is how it stops.
+    autoIssues: true,
   };
   await store.saveNewsletter(nl);
   return nl;
@@ -59,7 +64,10 @@ export async function createNewsletter(
 export async function runIssue(newsletterId: string, progress?: Progress, store: Store = defaultStore): Promise<Issue> {
   const nl = await store.getNewsletter(newsletterId);
   if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
-  const issue = await metered("issue", newsletterId, (d) => produceIssue(d, nl, progress), (i) => i.id);
+  // What the reader actually opens steers this issue too (computed from clicks, never stored).
+  const reads = await readingSignals(newsletterId).catch(() => []);
+  const withReads = { ...nl, memory: { ...nl.memory, reads } };
+  const issue = await metered("issue", newsletterId, (d) => produceIssue({ ...d, subscriptions: pgSubscriptions(newsletterId) }, withReads, progress), (i) => i.id);
   issue.number = (await store.listIssues(newsletterId)).length + 1;
   await store.saveIssue(issue);
   await store.saveNewsletter({ ...nl, memory: rememberIssue(nl.memory, issue), lastIssueDate: issue.date });
@@ -115,6 +123,7 @@ export async function updateProfile(newsletterId: string, patch: Partial<Profile
   if (patch.storyCount) p.storyCount = Math.min(10, Math.max(1, Number(patch.storyCount)));
   if (typeof patch.youtube === "boolean") p.youtube = patch.youtube;
   if (typeof patch.allowUndated === "boolean") p.allowUndated = patch.allowUndated;
+  if (patch.style) p.style = cleanStyle(patch.style);
   if (clean(patch.searchLanguages)) p.searchLanguages = clean(patch.searchLanguages)!;
   if (clean(patch.mustCover)) p.mustCover = clean(patch.mustCover)!;
   if (clean(patch.avoid)) p.avoid = clean(patch.avoid)!;
@@ -159,4 +168,89 @@ export async function setAutoIssues(newsletterId: string, on: boolean, store: St
   const updated = { ...nl, autoIssues: on };
   await store.saveNewsletter(updated);
   return updated;
+}
+
+const cleanStyle = (s: Partial<Style>): Style => normalizeStyle(s);
+
+/** Days of the week and hour. The cadence label follows, for older code paths and the planner. */
+export async function setDelivery(newsletterId: string, delivery: Partial<Delivery>, store: Store = defaultStore): Promise<Newsletter> {
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  const d = cleanDelivery({ ...deliveryOf(nl), ...delivery });
+  const updated: Newsletter = { ...nl, delivery: d, profile: { ...nl.profile, cadence: gapDays(d) <= 2 ? "daily" : "weekly" } };
+  await store.saveNewsletter(updated);
+  return updated;
+}
+
+/**
+ * Pause: nothing is written or sent, and nothing is lost. Subscriptions keep arriving in the
+ * inbox. `until` (YYYY-MM-DD) resumes by itself on that day.
+ */
+export async function pause(newsletterId: string, until?: string, store: Store = defaultStore): Promise<Newsletter> {
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  const valid = until && /^\d{4}-\d{2}-\d{2}$/.test(until) ? until : undefined;
+  const updated = { ...nl, pausedAt: nl.pausedAt ?? new Date().toISOString(), pausedUntil: valid };
+  await store.saveNewsletter(updated);
+  return updated;
+}
+
+/**
+ * Resume. `catchUp`: the next issue covers everything since the last one (the best of what
+ * was missed, still one issue). Otherwise it starts fresh, as if the pause never happened:
+ * only the usual window before today.
+ */
+export async function resume(newsletterId: string, catchUp: boolean, store: Store = defaultStore): Promise<Newsletter> {
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  const d = deliveryOf(nl);
+  const today = dateIn(d.timezone);
+  const updated: Newsletter = {
+    ...nl,
+    pausedAt: undefined,
+    pausedUntil: undefined,
+    windowFloor: catchUp ? undefined : addDays(today, -(gapDays(d) + 1)),
+  };
+  await store.saveNewsletter(updated);
+  return updated;
+}
+
+const bareDomain = (d: string) => d.trim().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").toLowerCase();
+
+/**
+ * Trust or block a site. Trusted sites get their own search every issue and, when they publish
+ * a feed (most blogs, Substack, news sites), their new posts are read directly too. One list
+ * for the reader, two mechanisms underneath.
+ */
+export async function addSite(newsletterId: string, site: string, list: "domains" | "blockedDomains", store: Store = defaultStore) {
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  const d = bareDomain(site);
+  const other = list === "domains" ? "blockedDomains" : "domains";
+  const p = nl.profile;
+  let updated = await updateProfile(newsletterId, {
+    [list]: [...new Set([...(p[list] ?? []), d])],
+    [other]: (p[other] ?? []).filter((x) => x !== d),
+  }, store);
+  if (list === "domains") {
+    await addFeed(newsletterId, site, "feed").catch(() => null); // no feed: searched only
+  } else {
+    await removeSite(newsletterId, d, store, false);
+    updated = (await store.getNewsletter(newsletterId))!;
+  }
+  return updated;
+}
+
+export async function removeSite(newsletterId: string, site: string, store: Store = defaultStore, fromLists = true) {
+  const d = bareDomain(site);
+  for (const s of await listSubscriptions(newsletterId)) {
+    if (s.kind === "feed" && s.url && (hostOf(s.url) === d || hostOf(s.url).endsWith(`.${d}`)) && !s.url.includes("youtube.com")) await removeSubscription(newsletterId, s.id);
+  }
+  const nl = await store.getNewsletter(newsletterId);
+  if (!nl) throw new Error(`Newsletter ${newsletterId} not found`);
+  if (!fromLists) return nl;
+  return updateProfile(newsletterId, {
+    domains: nl.profile.domains.filter((x) => x !== d),
+    blockedDomains: (nl.profile.blockedDomains ?? []).filter((x) => x !== d),
+  }, store);
 }

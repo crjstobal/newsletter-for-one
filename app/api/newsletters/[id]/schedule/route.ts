@@ -1,6 +1,9 @@
+import { denyWithoutAccess } from "@/lib/access";
 import { setAutoIssues } from "@/lib/service";
 
 export async function PATCH(request: Request, ctx: RouteContext<"/api/newsletters/[id]/schedule">) {
+  const denied = await denyWithoutAccess();
+  if (denied) return denied;
   const { id } = await ctx.params;
   const { autoIssues } = (await request.json()) as { autoIssues?: boolean };
   try {

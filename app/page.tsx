@@ -13,7 +13,7 @@ async function showcase(): Promise<{ issue: Issue; newsletter: Newsletter } | nu
   for (const newsletter of newsletters) {
     for (const issue of await store.listIssues(newsletter.id)) {
       if (!issue.trace || issue.quiet) continue;
-      const dated = issue.stories.filter((s) => s.dateFrom === "page" || s.dateFrom === "search").length;
+      const dated = issue.stories.filter((s) => s.dateFrom === "page" || s.dateFrom === "search" || s.dateFrom === "received").length;
       const rank = dated * 10 + new Set(issue.stories.map((s) => s.source)).size;
       if (!best || rank > best.rank) best = { issue, newsletter, rank };
     }

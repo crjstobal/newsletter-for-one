@@ -1,6 +1,7 @@
 import { q } from "./db";
 import { BudgetExceeded } from "./budget";
-import { runIssue } from "./service";
+import { resume, runIssue } from "./service";
+import { dateIn, isDue, isPaused, nextSlot } from "./core/schedule";
 import { store } from "./store";
 import type { Newsletter } from "./core/types";
 
@@ -10,22 +11,20 @@ import type { Newsletter } from "./core/types";
  * launched on a schedule. Work stops as soon as the daily spending cap is reached.
  */
 
-const CADENCE_DAYS = { daily: 1, weekly: 7 } as const;
 const TZ = process.env.BUDGET_TZ ?? "Europe/Madrid";
 
-export function todayIn(tz = TZ) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
+export const todayIn = (tz = TZ) => dateIn(tz);
 
-export function nextIssueDate(nl: Newsletter): string {
-  if (!nl.lastIssueDate) return todayIn();
-  const d = new Date(`${nl.lastIssueDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + CADENCE_DAYS[nl.profile.cadence]);
-  return d.toISOString().slice(0, 10);
-}
+/** Next delivery as an ISO instant (each newsletter has its own days, hour and time zone). */
+export const nextIssueAt = (nl: Newsletter) => nextSlot(nl).toISOString();
 
-export async function dueNewsletters(today = todayIn()) {
-  return (await store.listNewsletters()).filter((nl) => nl.autoIssues && nextIssueDate(nl) <= today);
+/** Runs hourly: anything whose slot has arrived is due. Pauses that reached their end date resume first. */
+export async function dueNewsletters(now = new Date()) {
+  const all = await store.listNewsletters();
+  for (const nl of all) {
+    if (nl.pausedAt && !isPaused(nl, now)) Object.assign(nl, await resume(nl.id, false));
+  }
+  return all.filter((nl) => isDue(nl, now));
 }
 
 export type WorkerRun = { id: number; startedAt: string; finishedAt?: string; trigger: string; status: string; summary?: string };

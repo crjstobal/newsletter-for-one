@@ -18,7 +18,8 @@ Plan 8 to 10 searches. Rules:
   help requests.
 - Aim at what is NEW since the window start: releases, updates, announcements, new tools,
   tutorials, discussions. Do not search for evergreen "best X" listicles.
-- Lean toward what the reader liked; steer away from what they disliked.
+- Lean toward what the reader liked; steer away from what they disliked. "readerReads" shows
+  what they actually open: spend more searches where they read, fewer where they never do.
 - Do not re-search stories already covered unless looking for a genuine follow-up.
 - The reader's preferred sources ("domains") already get their own dedicated search every
   issue, so spend your searches on discovering material elsewhere.
@@ -51,6 +52,8 @@ export async function planQueries(
     readerLikes: memory.likes,
     readerDislikes: memory.dislikes,
     readerNotes: memory.notes,
+    // What the reader actually opens. Weaker than likes and dislikes, but honest.
+    readerReads: (memory.reads ?? []).map((r) => `${r.by} "${r.name}": opened ${r.opened} of ${r.shown}`),
     alreadyCovered: memory.covered.map((c) => `${c.date}: ${c.headline}`),
     today,
     windowStart: since,

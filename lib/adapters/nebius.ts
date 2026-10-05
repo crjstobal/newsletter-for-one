@@ -19,6 +19,9 @@ export const DEFAULT_MODELS: Record<Role, string> = {
   editor: process.env.MODEL_EDITOR ?? "nvidia/Nemotron-3-Ultra-550b-a55b",
   // Long context again: folds reader feedback into a durable preference model.
   memory: process.env.MODEL_MEMORY ?? "nvidia/Nemotron-3_5-Lightning",
+  // Splits newsletters and podcast transcripts into separate news items. Mechanical, so it runs
+  // with reasoning off; 256K context fits a long episode transcript.
+  extract: process.env.MODEL_EXTRACT ?? "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
 };
 
 type Price = { prompt: number; completion: number }; // USD per token
@@ -52,7 +55,7 @@ export function extractJSON<T>(text: string): T {
 }
 
 export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAULT_MODELS): LLM {
-  async function call(role: Role, messages: ChatMessage[], maxTokens: number, note?: string) {
+  async function call(role: Role, messages: ChatMessage[], maxTokens: number, note?: string, thinking = true) {
     const key = await getKey("nebius.env", "NEBIUS_API_KEY");
     const prices = await loadPricing(key);
     const t0 = Date.now();
@@ -65,6 +68,8 @@ export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAU
         max_tokens: maxTokens,
         temperature: 0.3,
         response_format: { type: "json_object" },
+        // Nemotron's reasoning switch, passed to the chat template.
+        ...(thinking ? {} : { chat_template_kwargs: { enable_thinking: false } }),
       }),
     });
     if (!res.ok) throw new Error(`Nebius ${models[role]} ${res.status}: ${await res.text()}`);
@@ -79,7 +84,7 @@ export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAU
       completionTokens,
       costUsd: promptTokens * price.prompt + completionTokens * price.completion,
       ms: Date.now() - t0,
-      note,
+      note: thinking ? note : `${note ?? role}, reasoning off`,
     });
     const content: string = data.choices?.[0]?.message?.content ?? "";
     if (!content && data.choices?.[0]?.finish_reason === "length") {
@@ -90,11 +95,11 @@ export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAU
 
   return {
     models,
-    async json<T>(role: Role, messages: ChatMessage[], opts?: { maxTokens?: number; note?: string }) {
+    async json<T>(role: Role, messages: ChatMessage[], opts?: { maxTokens?: number; note?: string; thinking?: boolean }) {
       const maxTokens = opts?.maxTokens ?? 8000;
       let content = "";
       try {
-        content = await call(role, messages, maxTokens, opts?.note);
+        content = await call(role, messages, maxTokens, opts?.note, opts?.thinking ?? true);
         return extractJSON<T>(content);
       } catch (err) {
         // One corrective retry: show the model its broken output (reasoning models sometimes
@@ -107,7 +112,7 @@ export function nebiusLLM(tracker: Tracker, models: Record<Role, string> = DEFAU
               { role: "user", content: "That was not valid JSON. Reply again with only the JSON object, using real values (no type names, no comments, no prose)." },
             ]
           : messages;
-        return extractJSON<T>(await call(role, repair, maxTokens * 2, `${opts?.note ?? role} (retry)`));
+        return extractJSON<T>(await call(role, repair, maxTokens * 2, `${opts?.note ?? role} (retry)`, opts?.thinking ?? true));
       }
     },
   };

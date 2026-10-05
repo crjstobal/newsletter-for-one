@@ -1,6 +1,7 @@
 import { budgetStatus } from "@/lib/budget";
-import { nextIssueDate, recentRuns, todayIn } from "@/lib/worker";
+import { nextIssueAt, recentRuns, todayIn } from "@/lib/worker";
 import { store } from "@/lib/store";
+import { describeDelivery, deliveryOf, isDue, isPaused } from "@/lib/core/schedule";
 
 export async function GET() {
   const today = todayIn();
@@ -8,9 +9,12 @@ export async function GET() {
     id: nl.id,
     name: nl.profile.name,
     cadence: nl.profile.cadence,
+    delivery: describeDelivery(deliveryOf(nl)),
     autoIssues: Boolean(nl.autoIssues),
-    nextIssueDate: nextIssueDate(nl),
-    due: Boolean(nl.autoIssues) && nextIssueDate(nl) <= today,
+    paused: isPaused(nl),
+    pausedUntil: nl.pausedUntil,
+    nextIssueAt: nextIssueAt(nl),
+    due: isDue(nl),
   }));
   return Response.json({ today, budget: await budgetStatus(), newsletters, runs: await recentRuns() });
 }

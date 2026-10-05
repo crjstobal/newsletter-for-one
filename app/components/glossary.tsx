@@ -4,6 +4,8 @@ export const HELP = {
     "The date range this issue covers. It starts at the previous issue's date (or 8 days back for a weekly, 2 for a daily, on the first issue) and ends today. Anything published before it is dropped.",
   plan:
     "Nemotron 3.5 Lightning reads your brief, what you liked and disliked, and every story already sent, then decides what to search for this issue. Its 1M-token context lets it see your whole history.",
+  subscriptions:
+    "Your own newsletters, podcasts and feeds: everything they published in the window is split into separate pieces of news by Nemotron 3 Nano with reasoning turned off (a mechanical job, about 100 times fewer tokens), cached per item, then merged with the web results. The same news from several sources becomes one story that says who else covered it.",
   search:
     "Tavily runs every planned search on the live web, restricted to the window. 'news' searches press, 'web' blogs and official sites, 'reddit' and 'youtube' only those sites, 'sources' only your preferred sources. Advanced depth costs 2 credits per search.",
   triage:

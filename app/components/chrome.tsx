@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { store } from "@/lib/store";
-import { NewslettersMenu } from "./NewslettersMenu";
+
 
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
@@ -16,13 +16,12 @@ const LINKS = [
   { href: "/#how", label: "How it works" },
   { href: "/#dates", label: "Verified dates" },
   { href: "/#stack", label: "Built with" },
+  { href: "/pricing", label: "Pricing" },
 ];
 
 export async function SiteNav() {
   await connection();
-  const items = (await store.listNewsletters())
-    .sort((a, b) => (b.lastIssueDate ?? b.createdAt).localeCompare(a.lastIssueDate ?? a.createdAt))
-    .map((n) => ({ id: n.id, name: n.profile.name, lastIssue: n.lastIssueDate, cadence: n.profile.cadence }));
+  const count = (await store.listNewsletters()).length;
 
   return (
     <header className="sticky top-0 z-40 border-b border-rule bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">
@@ -34,7 +33,10 @@ export async function SiteNav() {
           ))}
         </ul>
         <div className="ml-auto flex items-center gap-2">
-          <NewslettersMenu items={items} />
+          <Link href="/newsletters" className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-[15px] font-medium hover:bg-stone-100 dark:hover:bg-stone-800">
+            Your newsletters
+            {count > 0 && <span className="rounded-full bg-stone-200 px-1.5 text-xs tabular-nums text-stone-600 dark:bg-stone-700 dark:text-stone-300">{count}</span>}
+          </Link>
           <Link href="/newsletters/new" className="btn btn-primary hidden sm:inline-flex">
             Start a newsletter
           </Link>
@@ -51,7 +53,7 @@ export function SiteFooter() {
         <div className="max-w-sm space-y-2">
           <Wordmark />
           <p>Personal newsletters researched and written by an agent that checks every date and learns what you care about.</p>
-          <p className="text-xs text-stone-500">Built for the Nebius x NVIDIA Global AI Hackathon, Personal AI track. MIT licensed.</p>
+          <p className="text-xs text-stone-500">Built for the Nebius x NVIDIA Global AI Hackathon, Personal AI track. Open source.</p>
         </div>
         <div>
           <p className="mb-2 font-semibold text-ink">Product</p>
@@ -59,6 +61,8 @@ export function SiteFooter() {
             <li><Link href="/#how" className="hover:text-ink">How it works</Link></li>
             <li><Link href="/#dates" className="hover:text-ink">Verified dates</Link></li>
             <li><Link href="/newsletters" className="hover:text-ink">Your newsletters</Link></li>
+            <li><Link href="/pricing" className="hover:text-ink">Pricing</Link></li>
+            <li><Link href="/admin" className="hover:text-ink">Spending and schedule</Link></li>
           </ul>
         </div>
         <div>

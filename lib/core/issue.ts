@@ -1,11 +1,15 @@
-import { hostOf, onDomain, type DateResolver, type LLM, type Search, type SearchRequest, type Tracker } from "./ports";
+import { hostOf, onDomain, type DateResolver, type LLM, type Search, type SearchHit, type SearchRequest, type Subscriptions, type Tracker } from "./ports";
 import type { CandidateStatus, Issue, Newsletter, QualityCheck, Story, Trace, TraceCandidate, TraceStep } from "./types";
 import { planQueries } from "./planner";
 import { triage, type Candidate, type Scored } from "./triage";
 import { writeIssue } from "./editor";
 import { checkMemory, type Verdict } from "./dedup";
+import { subscriptionCandidates } from "./subscriptions";
+import { addDays, deliveryOf, gapDays } from "./schedule";
 
 export const SHORTLIST = 24;
+/** Subscriptions add material the reader chose: room for it on top of the web shortlist. */
+export const SHORTLIST_WITH_SUBSCRIPTIONS = 32;
 export const MIN_SCORE = 6;
 /** Variety: no site may fill more than this share of the shortlist or of the issue. */
 export const MAX_SHORTLIST_PER_SITE = 6;
@@ -14,11 +18,15 @@ export const MAX_STORIES_PER_SITE = 2;
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
 function windowStart(nl: Newsletter, now: Date): string {
-  // A second issue on the same day would search an empty window; fall back to the cadence.
-  if (nl.lastIssueDate && nl.lastIssueDate < isoDate(now)) return nl.lastIssueDate;
-  const days = nl.profile.cadence === "daily" ? 2 : 8;
-  return isoDate(new Date(now.getTime() - days * 86_400_000));
+  const today = isoDate(now);
+  // A second issue on the same day would search an empty window; fall back to the delivery gap.
+  const since = nl.lastIssueDate && nl.lastIssueDate < today ? nl.lastIssueDate : addDays(today, -(gapDays(deliveryOf(nl)) + 1));
+  // After a pause the reader chose not to catch up on: nothing from before they came back.
+  return nl.windowFloor && nl.windowFloor > since ? nl.windowFloor : since;
 }
+
+/** Who a candidate comes from, as the reader would name it. */
+const nameOf = (c: { url: string; via?: string }, publisher?: string) => c.via ?? publisher ?? hostOf(c.url);
 
 function normalizeUrl(u: string) {
   try {
@@ -42,13 +50,13 @@ const sum = <T>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0
  * Every step is recorded in `issue.trace` so the reader (and we) can see how it was made.
  */
 export async function produceIssue(
-  deps: { llm: LLM; search: Search; dates: DateResolver; tracker: Tracker },
+  deps: { llm: LLM; search: Search; dates: DateResolver; tracker: Tracker; subscriptions?: Subscriptions },
   nl: Newsletter,
   progress: Progress = () => {},
   now = new Date(),
 ): Promise<Issue> {
   const t0 = Date.now();
-  const { llm, search, dates, tracker } = deps;
+  const { llm, search, dates, tracker, subscriptions } = deps;
   const profile = { ...nl.profile, blockedDomains: nl.profile.blockedDomains ?? [] };
   const today = isoDate(now);
   const since = windowStart(nl, now);
@@ -88,6 +96,11 @@ export async function produceIssue(
   t = Date.now();
   const searchMark = tracker.searches.length;
   progress("search", `${requests.length} searches on Tavily`);
+  // The reader's subscriptions are read while the web is searched.
+  const subsMark = tracker.llm.length;
+  const subsWork = subscriptions
+    ? subscriptionCandidates(llm, profile, subscriptions, since).catch((err) => ({ hits: [] as SearchHit[], items: [], errors: [(err as Error).message] }))
+    : Promise.resolve(null);
   const hitLists = await Promise.all(
     requests.map((r) =>
       search.search(r).catch((err) => {
@@ -97,23 +110,44 @@ export async function produceIssue(
     ),
   );
   const searches = tracker.searches.slice(searchMark);
+  const subs = await subsWork;
+  const tSubs = Date.now();
 
-  const byUrl = new Map<string, Candidate & { foundBy: number[] }>();
+  const byUrl = new Map<string, Candidate & { foundBy: number[]; vias: string[] }>();
   let nextId = 0;
   hitLists.forEach((hits, qi) => {
     for (const h of hits) {
       const key = normalizeUrl(h.url);
       const existing = byUrl.get(key);
       if (existing) existing.foundBy.push(qi);
-      else byUrl.set(key, { ...h, url: key, id: nextId++, foundBy: [qi] });
+      else byUrl.set(key, { ...h, url: key, id: nextId++, foundBy: [qi], vias: [] });
     }
   });
+  // A subscription linking to a page the web search also found is the same source: one
+  // candidate, credited to both.
+  for (const h of subs?.hits ?? []) {
+    const key = h.url.includes("#item-") ? h.url : normalizeUrl(h.url);
+    const existing = byUrl.get(key);
+    if (existing) {
+      existing.vias.push(h.via!);
+      existing.via ??= h.via;
+      existing.origin = existing.origin && existing.origin !== "web" ? existing.origin : h.origin;
+      existing.publishedDate ??= h.publishedDate;
+    } else byUrl.set(key, { ...h, url: key, id: nextId++, foundBy: [], vias: [h.via!] });
+  }
   const all = [...byUrl.values()];
   const blocked = all.filter((c) => profile.blockedDomains.some((d) => onDomain(c.url, d)));
   const candidates = all.filter((c) => !blocked.includes(c));
+  if (subs) {
+    steps.push({
+      key: "subscriptions", label: "Read your subscriptions", tool: `${llm.models.extract} (reasoning off)`, ms: tSubs - t,
+      costUsd: llmCost(subsMark),
+      summary: `${subs.items.length} received in the window, split into ${subs.hits.length} pieces of news${subs.errors.length ? ` · ${subs.errors.length} problems` : ""}`,
+    });
+  }
   steps.push({
     key: "search", label: "Search the web", tool: "Tavily", ms: Date.now() - t, costUsd: sum(searches, (s) => s.costUsd),
-    summary: `${sum(searches, (s) => s.hits)} results, ${all.length} unique`,
+    summary: `${sum(searches, (s) => s.hits)} results, ${all.length} unique${subs ? ` with your subscriptions` : ""}`,
   });
 
   // 3. Triage
@@ -121,6 +155,13 @@ export async function produceIssue(
   mark = tracker.llm.length;
   progress("triage", `scoring ${candidates.length} results`);
   const scored = await triage(llm, profile, nl.memory, candidates, today, since);
+  for (const s of scored) {
+    if (!s.origin || s.origin === "web") continue;
+    // Dated by when it was received or published in the feed, which is reliable.
+    if (s.publishedDate) s.dateFrom = "received";
+    // The reader chose to follow this source: a small, visible preference.
+    s.score = Math.min(10, s.score + 1);
+  }
   steps.push({
     key: "triage", label: "Score every result", tool: llm.models.triage, ms: Date.now() - t, costUsd: llmCost(mark),
     summary: `${scored.length} scored, ${scored.filter((s) => s.score >= MIN_SCORE).length} at ${MIN_SCORE}+`,
@@ -129,7 +170,7 @@ export async function produceIssue(
   // 4. Verify dates: every promising result without a search-engine date gets its page checked.
   t = Date.now();
   const dateNotes = new Map<number, string>();
-  const toVerify = scored.filter((s) => s.score >= MIN_SCORE && s.dateFrom !== "search");
+  const toVerify = scored.filter((s) => s.score >= MIN_SCORE && s.dateFrom !== "search" && s.dateFrom !== "received");
   progress("dates", `verifying ${toVerify.length} dates`);
   await mapLimit(toVerify, 8, async (s) => {
     const r = await dates.resolve(s.url);
@@ -142,6 +183,7 @@ export async function produceIssue(
     }
   });
   for (const s of scored) if (s.dateFrom === "search") dateNotes.set(s.id, "search engine date");
+  for (const s of scored) if (s.dateFrom === "received") dateNotes.set(s.id, `received from ${s.via}`);
   const verified = toVerify.filter((s) => s.dateFrom === "page").length;
   steps.push({
     key: "dates", label: "Verify dates", tool: "Page metadata / platform APIs (no model)", ms: Date.now() - t, costUsd: 0,
@@ -166,7 +208,8 @@ export async function produceIssue(
     const host = hostOf(s.url);
     const platform = host === "youtube.com" || host === "reddit.com";
     const site = platform ? `${host}#${s.id}` : host; // channels are only known later; don't cap platforms here
-    if ((perSite.get(site) ?? 0) >= MAX_SHORTLIST_PER_SITE || shortlist.length >= SHORTLIST) continue;
+    const limit = subs?.hits.length ? SHORTLIST_WITH_SUBSCRIPTIONS : SHORTLIST;
+    if ((perSite.get(site) ?? 0) >= MAX_SHORTLIST_PER_SITE || shortlist.length >= limit) continue;
     perSite.set(site, (perSite.get(site) ?? 0) + 1);
     shortlist.push(s);
   }
@@ -208,6 +251,27 @@ export async function produceIssue(
     }
   }
   const fresh = shortlist.filter((s) => status.get(s.id) === "shortlisted");
+
+  // Coverage: how many different sources reported each piece of news. Duplicates point at the
+  // best source; results with the same event key count too. Importance, for free.
+  const byAll = new Map(all.map((c) => [c.id, c]));
+  // name -> a link to that source's own report, so the reader can read more.
+  const coverage = new Map<number, Map<string, string>>();
+  const keyOwner = new Map<string, number>();
+  for (const s of fresh) {
+    coverage.set(s.id, new Map((byAll.get(s.id)?.vias ?? []).map((v) => [v, ""])));
+    if (!keyOwner.has(s.eventKey)) keyOwner.set(s.eventKey, s.id);
+  }
+  for (const s of scored) {
+    const st = status.get(s.id);
+    if (st === "wrong-language" || st === "low-score" || st === "too-old") continue;
+    const root = st === "duplicate" ? rootOf(s.id) : keyOwner.get(s.eventKey);
+    if (root === undefined || !coverage.has(root)) continue;
+    const names = coverage.get(root)!;
+    const link = s.url.startsWith("/") ? "" : s.url;
+    if (!names.get(nameOf(s))) names.set(nameOf(s), link);
+    for (const v of byAll.get(s.id)?.vias ?? []) if (!names.get(v)) names.set(v, link);
+  }
   steps.push({
     key: "memory", label: "Check memory", tool: llm.models.dedup, ms: Date.now() - t, costUsd: llmCost(mark),
     summary: memoryFailed
@@ -222,17 +286,19 @@ export async function produceIssue(
   const publishers = new Map<number, string>();
   await Promise.all(fresh.map(async (s) => {
     const platform = onDomain(s.url, "youtube.com") || onDomain(s.url, "youtu.be") || onDomain(s.url, "reddit.com");
+    // A subscription item without its own article link is credited to the subscription.
+    if (s.via && (s.url.startsWith("/") || s.url.includes("#item-"))) return void publishers.set(s.id, s.via);
     publishers.set(s.id, (platform && (await dates.resolve(s.url)).publisher) || hostOf(s.url));
   }));
-  const written = await writeIssue(llm, profile, nl.memory, fresh, today, MAX_STORIES_PER_SITE, (id) => publishers.get(id) ?? "");
+  const written = await writeIssue(llm, profile, nl.memory, fresh, today, MAX_STORIES_PER_SITE, (id) => publishers.get(id) ?? "", (id) => [...(coverage.get(id) ?? new Map()).entries()].map(([name, url]) => ({ name, url: url || undefined })));
   written.sourceIds.forEach((id) => status.set(id, "used"));
   // Preview images published by each source (cached: most pages were opened to check dates).
   await Promise.all(written.stories.map(async (s) => {
-    s.image = (await dates.resolve(s.url)).image;
+    if (!s.url.startsWith("/")) s.image = (await dates.resolve(s.url.replace(/#item-\d+$/, ""))).image;
   }));
   steps.push({
     key: "edit", label: "Write the issue", tool: llm.models.editor, ms: Date.now() - t, costUsd: llmCost(mark),
-    summary: `${written.stories.length} stories from ${new Set(written.stories.map((s) => s.publisher ?? s.source)).size} publishers${written.dropped ? `, ${written.dropped} dropped for variety` : ""}${written.quiet ? " (quiet issue)" : ""}`,
+    summary: `${written.stories.length} stories from ${new Set(written.stories.map((s) => s.publisher ?? s.source)).size} publishers${written.dropped ? `, ${written.dropped} dropped for variety` : ""}${written.stories.filter((s) => (s.alsoIn?.length ?? 0) > 0).length ? `, ${written.stories.filter((s) => (s.alsoIn?.length ?? 0) > 0).length} reported by several of your sources` : ""}${written.rejected.length ? `, ${written.rejected.length} cut by the final review` : ""}${written.quiet ? " (quiet issue)" : ""}`,
   });
 
   // Trace
@@ -254,6 +320,8 @@ export async function produceIssue(
       status: blocked.includes(c) ? "blocked" : status.get(c.id) ?? "unscored",
       storyIndex: storyIndex >= 0 ? storyIndex : undefined,
       lang: s?.lang,
+      origin: c.origin,
+      via: c.vias.length ? [...new Set(c.vias)].join(", ") : undefined,
       sameAs: sameAsNote.get(c.id) ?? (status.get(c.id) === "already-sent" ? coveredByKey.get(s?.eventKey ?? "")?.headline : undefined),
     };
   });
@@ -267,6 +335,8 @@ export async function produceIssue(
     candidates: traceCandidates,
     llmCalls: tracker.llm,
     checks: [
+      ...written.rejected.map((f) => ({ level: "ok" as const, message: `Final review cut "${f.headline ?? "a draft story"}": ${f.problem === "mismatch" ? "it did not match its source" : `nearly the same as "${f.sameAsHeadline ?? "a story above"}"`} (${f.why})` })),
+      ...(subs?.errors ?? []).slice(0, 5).map((m) => ({ level: "warn" as const, message: `Subscription: ${m}` })),
       ...(memoryFailed ? [{ level: "warn" as const, message: "Memory check failed: repeats were only filtered by exact match, check nothing was sent before" }] : []),
       ...qualityChecks(written.stories, written.quiet, traceCandidates, searches.filter((s) => s.error).length, since, profile.storyCount),
     ],
@@ -289,6 +359,7 @@ export async function produceIssue(
     intro: written.intro,
     stories: written.stories,
     quiet: written.quiet,
+    numbers: written.numbers,
     trace,
   };
 }

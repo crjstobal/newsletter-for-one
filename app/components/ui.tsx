@@ -33,6 +33,7 @@ function daysBetween(a: string, b: string) {
 const ORIGIN: Record<DateOrigin, string> = {
   search: "from the search engine",
   page: "verified on the page itself",
+  received: "the day it arrived from your subscription",
   window: "inside the window according to the search engine's date filter",
   model: "read from the text by the model, not verified",
   none: "",
@@ -104,7 +105,7 @@ export function Stamp({ date, from, note, since, animate = false, className = ""
   if (!date && from === "window") return <span className={base} style={{ color: "var(--color-stone-500)" }} title={note}>≈ this window</span>;
   if (!date) return <span className={base} style={{ color: "var(--color-caution)" }} title={note ?? "No publication date"}>no date</span>;
   if (date < since) return <span className={base} style={{ color: "#c0392b" }} title={`Published ${date}, before this issue's window`}>{shortDate(date)} · old</span>;
-  const verified = from === "page" || from === "search";
+  const verified = from === "page" || from === "search" || from === "received";
   return (
     <span className={base} style={verified ? undefined : { color: "var(--color-stone-500)", borderStyle: "dashed" }} title={`Published ${date}. ${ORIGIN[from ?? "search"]}${note && from === "page" ? ` (${note})` : ""}`}>
       {verified && <span aria-hidden>✓</span>}

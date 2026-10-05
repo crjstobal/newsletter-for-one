@@ -1,9 +1,12 @@
+import { denyWithoutAccess } from "@/lib/access";
 import { runIssue } from "@/lib/service";
 
 export const maxDuration = 300;
 
 /** Produces an issue and streams progress as newline-delimited JSON. */
 export async function POST(_request: Request, ctx: RouteContext<"/api/newsletters/[id]/issues">) {
+  const denied = await denyWithoutAccess();
+  if (denied) return denied;
   const { id } = await ctx.params;
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

@@ -5,7 +5,7 @@ import type { CandidateStatus, Issue } from "@/lib/core/types";
 import { HELP } from "./glossary";
 import { Card, DateBadge, H3, STATUS, StatusBadge, Tip, secs, usd } from "./ui";
 
-const STEP_HELP: Record<string, string> = { plan: HELP.plan, search: HELP.search, triage: HELP.triage, dates: HELP.dates, filter: HELP.filter, memory: HELP.memory, edit: HELP.edit };
+const STEP_HELP: Record<string, string> = { plan: HELP.plan, subscriptions: HELP.subscriptions, search: HELP.search, triage: HELP.triage, dates: HELP.dates, filter: HELP.filter, memory: HELP.memory, edit: HELP.edit };
 const ORDER: CandidateStatus[] = ["used", "shortlisted", "already-sent", "duplicate", "too-old", "no-date", "wrong-language", "low-score", "blocked", "unscored"];
 
 const shortModel = (m: string) => m.replace(/^nvidia\//, "");
@@ -160,9 +160,9 @@ export function UnderTheHood({ issue, onDomain }: { issue: Issue; onDomain: (dom
                     {c.sameAs && <div className="mt-0.5 text-[11px] text-sky-700 dark:text-sky-300">same news as: {c.sameAs}</div>}
                     {c.eventKey && <div className="font-mono text-[10px] text-stone-400">event: {c.eventKey}</div>}
                   </td>
-                  <td className="pr-2 font-mono text-stone-500">{c.foundBy.map((i) => i + 1).join(", ")}</td>
+                  <td className="pr-2 font-mono text-stone-500">{[...c.foundBy.map((i) => String(i + 1)), ...(c.via ? [c.origin === "podcast" ? "podcast" : c.origin === "feed" ? "feed" : "inbox"] : [])].join(", ")}</td>
                   <td className="whitespace-nowrap">
-                    <div className="text-stone-600 dark:text-stone-400">{c.source}{c.lang ? <span className="ml-1.5 rounded bg-stone-100 px-1 text-[10px] uppercase text-stone-500 dark:bg-stone-800">{c.lang}</span> : null}</div>
+                    <div className="text-stone-600 dark:text-stone-400">{c.via ? <span className="mr-1.5 rounded bg-stamp-soft px-1 text-[10px] text-stamp">{c.via}</span> : null}{c.source}{c.lang ? <span className="ml-1.5 rounded bg-stone-100 px-1 text-[10px] uppercase text-stone-500 dark:bg-stone-800">{c.lang}</span> : null}</div>
                     <div className="mt-0.5 flex gap-1">
                       <button onClick={() => onDomain(c.source, "domains")} className="text-[10px] text-emerald-700 hover:underline dark:text-emerald-400">prefer</button>
                       <button onClick={() => onDomain(c.source, "blockedDomains")} className="text-[10px] text-red-700 hover:underline dark:text-red-400">block</button>

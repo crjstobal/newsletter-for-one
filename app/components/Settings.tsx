@@ -1,8 +1,10 @@
 "use client";
 
-import { Ban, ChevronDown, Minus, Plus, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ChevronDown, Eye, Minus, Plus, Sparkles, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { Newsletter, Profile, ReaderMemory } from "@/lib/core/types";
+import { normalizeStyle, type Delivery, type Newsletter, type Profile, type ReaderMemory, type Style } from "@/lib/core/types";
+import { StylePicker } from "./StylePicker";
+import { DAY_NAMES, deliveryOf } from "@/lib/core/schedule";
 import { HELP } from "./glossary";
 import { Tip } from "./ui";
 import { LANGUAGES } from "./examples";
@@ -25,13 +27,21 @@ const split = (items: Item[]) => ({
 export function Settings({
   newsletter,
   onSave,
-  onAutoIssues,
+  onboarding,
+  renderActions,
+  onDelete,
 }: {
+  onDelete?: () => Promise<void>;
   newsletter: Newsletter;
-  onSave: (profile: Partial<Profile>, memory: MemoryPatch) => Promise<void>;
-  onAutoIssues: (on: boolean) => Promise<void>;
+  /** Setting up a new newsletter: nothing learned yet, so no Memory section. */
+  onboarding?: boolean;
+  /** Replaces the floating save bar (the setup flow saves on "Next"). */
+  renderActions?: (save: () => Promise<void>, dirty: boolean, saving: boolean) => ReactNode;
+  onSave: (profile: Partial<Profile>, memory: MemoryPatch, delivery: Delivery) => Promise<void>;
 }) {
-  const initial = { ...newsletter.profile, blockedDomains: newsletter.profile.blockedDomains ?? [] };
+  const initial = { ...newsletter.profile, blockedDomains: newsletter.profile.blockedDomains ?? [], style: normalizeStyle(newsletter.profile.style) };
+  const initialDelivery = deliveryOf(newsletter);
+  const [delivery, setDelivery] = useState<Delivery>(initialDelivery);
   const initialMemory: MemoryPatch = {
     likes: newsletter.memory.likes,
     dislikes: newsletter.memory.dislikes,
@@ -41,7 +51,9 @@ export function Settings({
   const [p, setP] = useState<Profile>(initial);
   const [mem, setMem] = useState<MemoryPatch>(initialMemory);
   const [saving, setSaving] = useState(false);
-  const dirty = JSON.stringify(p) !== JSON.stringify(initial) || JSON.stringify(mem) !== JSON.stringify(initialMemory);
+  const dirty = JSON.stringify(p) !== JSON.stringify(initial) || JSON.stringify(mem) !== JSON.stringify(initialMemory) || JSON.stringify(delivery) !== JSON.stringify(initialDelivery);
+  const style = normalizeStyle(p.style);
+  const setStyle = (patch: Partial<Style>) => setP((x) => ({ ...x, style: { ...normalizeStyle(x.style), ...patch } }));
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setP((x) => ({ ...x, [k]: v }));
 
   const cover = merge(p.mustCover, mem.likes);
@@ -59,7 +71,7 @@ export function Settings({
 
   async function save() {
     setSaving(true);
-    await onSave(p, mem);
+    await onSave(p, mem, delivery);
     setSaving(false);
   }
 
@@ -67,31 +79,32 @@ export function Settings({
 
   return (
     <div className="pb-28">
-      <Section title="Basics" text="What the newsletter is and who it's for. Drafted from your description.">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Name"><input className={field} value={p.name} onChange={(e) => set("name", e.target.value)} /></Field>
-          <Field label="Written for"><input className={field} value={p.audience} onChange={(e) => set("audience", e.target.value)} /></Field>
-          <Field label="Topic" wide><input className={field} value={p.topic} onChange={(e) => set("topic", e.target.value)} /></Field>
-          <Field label="Tone" wide><input className={field} value={p.tone} onChange={(e) => set("tone", e.target.value)} /></Field>
+      <Section title="Name" text="What the newsletter is called. Everything else about it was drafted from your description.">
+        <div className="max-w-md">
+          <input className={field} value={p.name} onChange={(e) => set("name", e.target.value)} aria-label="Name" />
         </div>
       </Section>
 
-      <Section title="Delivery" text="How often an issue is written, how long it is, and in which language.">
-        <div className="mb-6 rounded-lg bg-paper p-4">
-          <Switch
-            checked={Boolean(newsletter.autoIssues)}
-            onChange={(v) => onAutoIssues(v)}
-            label="Write issues automatically"
-            help="When on, the scheduled worker writes the next issue when it's due (every day or every week, from the last issue). It counts towards the daily spending cap like everything else. Saved immediately."
-          />
-        </div>
+      <Section title="Delivery" text="Which days and at what time an issue arrives, how long it is, and in which language. To stop for a while without losing anything, use Pause at the top.">
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="How often">
-            <Segmented
-              value={p.cadence}
-              options={[["weekly", "Weekly"], ["daily", "Daily"]]}
-              onChange={(v) => set("cadence", v as Profile["cadence"])}
-            />
+          <Field label={`Days (${delivery.days.length} a week)`} help="Pick the days an issue arrives. Each issue covers everything since the previous one, so fewer days means fuller issues." wide>
+            <DayPicker value={delivery.days} onChange={(days) => setDelivery((d) => ({ ...d, days }))} />
+          </Field>
+          <Field label="At">
+            <div className="flex gap-2">
+              <div className="relative w-28 shrink-0">
+                <select className={`${field} appearance-none pr-9`} value={delivery.hour} onChange={(e) => setDelivery((d) => ({ ...d, hour: Number(e.target.value) }))} aria-label="Hour">
+                  {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-500" />
+              </div>
+              <div className="relative min-w-0 flex-1">
+                <select className={`${field} appearance-none pr-9`} value={delivery.timezone} onChange={(e) => setDelivery((d) => ({ ...d, timezone: e.target.value }))} aria-label="Time zone">
+                  {zones(delivery.timezone).map((z) => <option key={z} value={z}>{z.replace(/_/g, " ")}</option>)}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-500" />
+              </div>
+            </div>
           </Field>
           <Field label="Stories per issue" help={HELP.storyCount}>
             <Stepper value={p.storyCount} min={1} max={10} onChange={(v) => set("storyCount", v)} />
@@ -110,6 +123,14 @@ export function Settings({
         </div>
       </Section>
 
+      <Section title="Style" text="How long each story is and how it sounds. Facts never change with the style: same sources, told differently.">
+        <StylePicker style={style} onChange={setStyle} />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <Switch checked={style.jokes && style.preset !== "rundown"} onChange={(v) => setStyle({ jokes: v })} label="A joke per story" help="One short, good-natured line under each story. It never adds facts. Not with Rundown." />
+          <Switch checked={style.mindMap} onChange={(v) => setStyle({ mindMap: v })} label="Mind map of the issue" help="Stories grouped by theme in a map at the top of the issue." />
+        </div>
+      </Section>
+
       <Section
         title="Coverage"
         text={`What you want and what wastes your time. The planner, the scorer and the editor all read this.${learnedCount ? ` Items marked "learned" come from your votes on stories; edit or remove them like any other.` : ""}`}
@@ -124,32 +145,7 @@ export function Settings({
         </div>
       </Section>
 
-      <Section title="Sources" text="Where it looks. Sites you trust get their own search every issue; blocked sites are never used.">
-        <div className="grid gap-6 sm:grid-cols-2">
-          <Field label="Watchlist" help={HELP.watchlist} wide>
-            <Chips values={p.watchlist ?? []} onChange={(v) => set("watchlist", v)} placeholder="Add a company, product or creator" split="comma" />
-          </Field>
-          <Field label="Subject in a few words" help={HELP.coreQuery}>
-            <input className={field} value={p.coreQuery ?? ""} onChange={(e) => set("coreQuery", e.target.value)} placeholder={p.name} />
-          </Field>
-          <div className="hidden sm:block" />
-          <Field label="Trusted sites" help={HELP.preferred} icon={<ShieldCheck size={15} className="text-fresh" />}>
-            <Chips values={p.domains} onChange={(v) => set("domains", v)} placeholder="Add a site, e.g. apple.com" tone="good" />
-          </Field>
-          <Field label="Blocked sites" help={HELP.blocked} icon={<Ban size={15} className="text-red-600" />}>
-            <Chips values={p.blockedDomains} onChange={(v) => set("blockedDomains", v)} placeholder="Add a site to block" tone="bad" />
-          </Field>
-          <Field label="Reddit communities" help={HELP.subreddits}>
-            <Chips values={p.subreddits} onChange={(v) => set("subreddits", v)} placeholder="Add a subreddit" prefix="r/" />
-          </Field>
-          <div className="space-y-4 sm:pt-7">
-            <Switch checked={p.youtube} onChange={(v) => set("youtube", v)} label="Look for new YouTube videos" help={HELP.youtube} />
-            <Switch checked={Boolean(p.allowUndated)} onChange={(v) => set("allowUndated", v)} label="Keep results without a verifiable date" help={HELP.allowUndated} />
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Memory" text="What is kept between issues. Stories already sent are never repeated, even when another site covers the same news." last>
+      {!onboarding && <Section title="Memory" text="What is kept between issues. Stories already sent are never repeated, even when another site covers the same news." last>
         <Field label="Notes about you">
           <textarea
             className={`${field} h-auto min-h-24 py-2.5 leading-relaxed`}
@@ -158,6 +154,7 @@ export function Settings({
             onChange={(e) => setMem((m) => ({ ...m, notes: e.target.value }))}
           />
         </Field>
+        <ReadingSignals reads={newsletter.memory.reads ?? []} />
         <div className="mt-7">
           <div className="mb-2 text-sm font-semibold">
             <Tip text="Every story you received. Before writing an issue, Nemotron compares new results against all of these and drops the same news. Forget one to allow it again.">
@@ -186,10 +183,14 @@ export function Settings({
           )}
         </div>
         <p className="mt-8 text-sm text-stone-500">Your original description: &ldquo;{newsletter.description}&rdquo;</p>
-      </Section>
+      </Section>}
+
+      {!onboarding && onDelete && <DangerZone name={newsletter.profile.name} onDelete={onDelete} />}
+
+      {renderActions?.(save, dirty, saving)}
 
       {/* Save bar: only when something changed */}
-      {dirty && (
+      {!renderActions && dirty && (
         <div className="fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
           <div className="flex items-center gap-3 rounded-full border border-rule bg-sheet py-2 pl-5 pr-2 shadow-[0_18px_40px_-16px_rgba(22,24,29,0.45)]">
             <span className="text-sm">You have unsaved changes</span>
@@ -226,24 +227,6 @@ function Field({ label, help, wide, icon, children }: { label: string; help?: st
   );
 }
 
-function Segmented({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
-  return (
-    <div role="radiogroup" className="inline-flex h-11 rounded-lg border border-rule bg-paper p-1">
-      {options.map(([v, label]) => (
-        <button
-          key={v}
-          role="radio"
-          aria-checked={value === v}
-          onClick={() => onChange(v)}
-          className={`rounded-md px-5 text-[15px] font-medium transition-colors ${value === v ? "bg-sheet text-ink shadow-sm ring-1 ring-rule" : "text-stone-500 hover:text-ink"}`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Stepper({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
   const b = "flex h-11 w-11 items-center justify-center text-stone-600 hover:text-ink disabled:opacity-30 dark:text-stone-400";
   return (
@@ -255,7 +238,7 @@ function Stepper({ value, min, max, onChange }: { value: number; min: number; ma
   );
 }
 
-function Switch({ checked, onChange, label, help }: { checked: boolean; onChange: (v: boolean) => void; label: string; help?: string }) {
+export function Switch({ checked, onChange, label, help }: { checked: boolean; onChange: (v: boolean) => void; label: string; help?: string }) {
   return (
     <div className="flex items-center gap-3">
       <button
@@ -322,7 +305,7 @@ function ListEditor({ values, onChange, placeholder }: { values: Item[]; onChang
   );
 }
 
-function Chips({ values, onChange, placeholder, tone, prefix = "", split = "space" }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; tone?: "good" | "bad"; prefix?: string; split?: "space" | "comma" }) {
+export function Chips({ values, onChange, placeholder, tone, prefix = "", split = "space" }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; tone?: "good" | "bad"; prefix?: string; split?: "space" | "comma" }) {
   const [draft, setDraft] = useState("");
   const cls =
     tone === "good" ? "bg-fresh/10 text-fresh" :
@@ -358,5 +341,115 @@ function Chips({ values, onChange, placeholder, tone, prefix = "", split = "spac
         className="h-8 min-w-40 flex-1 bg-transparent px-1.5 text-sm outline-none"
       />
     </div>
+  );
+}
+
+
+function DayPicker({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
+  // Monday first, as most of the world reads a week.
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const toggle = (d: number) => {
+    const next = value.includes(d) ? value.filter((x) => x !== d) : [...value, d];
+    if (next.length) onChange(next.sort());
+  };
+  const quick: [string, number[]][] = [["Every day", [0, 1, 2, 3, 4, 5, 6]], ["Weekdays", [1, 2, 3, 4, 5]], ["3 a week", [1, 3, 5]], ["Weekly", [1]], ["Weekend read", [6]]];
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Delivery days">
+        {order.map((d) => (
+          <button
+            key={d}
+            aria-pressed={value.includes(d)}
+            onClick={() => toggle(d)}
+            className={`h-11 w-14 rounded-lg border text-[15px] font-medium transition-colors ${value.includes(d) ? "border-stamp bg-stamp text-white" : "border-rule bg-paper text-stone-600 hover:border-stone-400 dark:text-stone-400"}`}
+          >
+            {DAY_NAMES[d]}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {quick.map(([label, days]) => (
+          <button key={label} onClick={() => onChange(days)} className="rounded-full border border-rule px-2.5 py-0.5 text-xs text-stone-600 hover:border-stone-400 dark:text-stone-400">{label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const COMMON_ZONES = ["Europe/Madrid", "Europe/London", "Europe/Athens", "Europe/Berlin", "America/New_York", "America/Chicago", "America/Los_Angeles", "America/Mexico_City", "America/Sao_Paulo", "Asia/Tokyo", "Asia/Singapore", "Australia/Sydney", "UTC"];
+function zones(current: string) {
+  let local = "";
+  try {
+    local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    // no browser time zone
+  }
+  return [...new Set([current, local, ...COMMON_ZONES].filter(Boolean))];
+}
+
+/** What the reader opens, from clicks on story links. Read-only: it updates itself. */
+function ReadingSignals({ reads }: { reads: NonNullable<ReaderMemory["reads"]> }) {
+  const themes = reads.filter((r) => r.by === "theme");
+  const pubs = reads.filter((r) => r.by === "publisher");
+  return (
+    <div className="mt-7">
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+        <Eye size={15} />
+        <Tip text="Counted from the stories you open (links go through a short redirect that records the click). The planner and the editor read this every issue: more searches where you read, fewer where you never do. It is weaker evidence than your votes.">
+          What you actually read
+        </Tip>
+      </div>
+      {reads.length ? (
+        <div className="grid gap-5 sm:grid-cols-2">
+          {[["By theme", themes], ["By source", pubs]].map(([label, rows]) => (
+            <div key={label as string}>
+              <p className="mb-1.5 text-xs text-stone-500">{label as string}</p>
+              <ul className="space-y-1.5">
+                {(rows as typeof reads).slice(0, 6).map((r) => (
+                  <li key={r.name} className="grid grid-cols-[1fr_96px_44px] items-center gap-3 text-[15px]">
+                    <span className="truncate">{r.name}</span>
+                    <span className="h-1.5 overflow-hidden rounded-full bg-stone-100 dark:bg-stone-800"><span className="block h-full rounded-full bg-stamp" style={{ width: `${(r.opened / r.shown) * 100}%` }} /></span>
+                    <span className="text-right text-sm tabular-nums text-stone-500">{r.opened}/{r.shown}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[15px] text-stone-500">Nothing yet. Open a few stories and it starts learning what you read.</p>
+      )}
+    </div>
+  );
+}
+
+/** Deleting is permanent, so it takes two clicks and says what goes with it. */
+function DangerZone({ name, onDelete }: { name: string; onDelete: () => Promise<void> }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="mt-4 rounded-2xl border border-red-300 p-6 dark:border-red-900">
+      <h3 className="text-lg font-bold text-red-700 dark:text-red-400">Danger zone</h3>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+        <p className="max-w-xl text-[15px] text-stone-600 dark:text-stone-400">
+          Delete &ldquo;{name}&rdquo; with all its issues, what it learned about you and the sources you follow. This cannot be undone.
+          To stop it for a while instead, use Pause.
+        </p>
+        {!armed ? (
+          <button onClick={() => setArmed(true)} className="btn border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950">Delete this newsletter</button>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={() => setArmed(false)} disabled={busy} className="btn btn-secondary">Keep it</button>
+            <button
+              onClick={async () => { setBusy(true); await onDelete(); }}
+              disabled={busy}
+              className="btn bg-red-600 text-white hover:bg-red-700"
+            >
+              {busy ? "Deleting…" : "Yes, delete it forever"}
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -2,16 +2,28 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Wrench } from "lucide-react";
 import type { Issue, Newsletter, Profile } from "@/lib/core/types";
+import { describeDelivery, deliveryOf, isPaused, nextSlot } from "@/lib/core/schedule";
+import { PauseControl, PausedBanner } from "../../components/PauseControl";
+import { SourcesPanel } from "../../components/SourcesPanel";
 import { IssueView } from "../../components/IssueView";
 import { UnderTheHood } from "../../components/UnderTheHood";
 import { Settings } from "../../components/Settings";
+import { UnlockForm } from "../../components/UnlockForm";
+import { Gummy } from "../../components/Gummy";
 import { HELP } from "../../components/glossary";
 import { LANGUAGE_NAMES } from "../../components/examples";
 import { Tip, usd } from "../../components/ui";
 
-type Tab = "issue" | "hood" | "settings";
+/**
+ * Reader tabs (Issue, Sources, Settings) are the product. "Under the hood" is set apart: how
+ * each issue was made, what it cost, and the brief Nemotron wrote. It is there for the
+ * hackathon jury and would become an internal tool later.
+ */
+type Tab = "issue" | "sources" | "settings" | "hood";
+type Problem = { message: string; locked?: boolean };
 
 const PIPELINE = [
   { key: "plan", label: "Plan", help: HELP.plan },
@@ -22,6 +34,8 @@ const PIPELINE = [
   { key: "edit", label: "Write", help: HELP.edit },
 ] as const;
 
+const json = { "Content-Type": "application/json" };
+
 export default function NewsletterPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -30,25 +44,38 @@ export default function NewsletterPage() {
   const [issueIdx, setIssueIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("issue");
   const [justCreated, setJustCreated] = useState(false);
+  const autoWrite = useRef(false);
 
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<{ t: string; step: string; detail?: string }[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/newsletters/${id}`);
+    const res = await fetch(`/api/newsletters/${id}`, { cache: "no-store" });
     if (res.status === 404) return setMissing(true);
     setCurrent(await res.json());
   }, [id]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
+    const t = q.get("tab");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (q.get("tab") === "settings") setTab("settings");
-    setJustCreated(q.get("new") === "1");
+    if (t === "settings" || t === "sources" || t === "hood") setTab(t);
+    // Coming from the setup flow's "Send me my first issue".
+    if (q.get("write") === "1") {
+      setJustCreated(true);
+      autoWrite.current = true;
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!autoWrite.current || !current) return;
+    autoWrite.current = false;
+    if (current.issues.length === 0) generate();
+  }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!toast) return;
@@ -56,15 +83,25 @@ export default function NewsletterPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  /** Every write goes through here: a refused one shows why, and the unlock form when locked. */
+  async function send(url: string, method: string, body?: unknown) {
+    const res = await fetch(url, { method, headers: json, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (res.ok) return res;
+    const err = await res.json().catch(() => ({}));
+    setProblem({ message: err.error ?? `Request failed (${res.status})`, locked: err.locked });
+    return null;
+  }
+
   async function generate() {
     setRunning(true);
-    setError(null);
+    setProblem(null);
     setLog([]);
     setTab("issue");
     setJustCreated(false);
     const started = Date.now();
     try {
-      const res = await fetch(`/api/newsletters/${id}/issues`, { method: "POST" });
+      const res = await send(`/api/newsletters/${id}/issues`, "POST");
+      if (!res) return;
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -83,47 +120,31 @@ export default function NewsletterPage() {
         }
       }
       await load();
-      router.refresh(); // the top menu shows the new last-issue date
+      router.refresh();
       setIssueIdx(0);
     } catch (err) {
-      setError(`The issue couldn't be finished: ${(err as Error).message}`);
+      setProblem({ message: `The issue couldn't be finished: ${(err as Error).message}` });
     } finally {
       setRunning(false);
     }
   }
 
   async function patchProfile(patch: Partial<Profile>) {
-    const res = await fetch(`/api/newsletters/${id}/profile`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) setError((await res.json()).error);
+    await send(`/api/newsletters/${id}/profile`, "PATCH", patch);
     await load();
   }
 
-  async function addDomain(domain: string, list: "domains" | "blockedDomains") {
-    if (!current) return;
-    const p = current.newsletter.profile;
-    const other = list === "domains" ? "blockedDomains" : "domains";
-    await patchProfile({
-      [list]: [...new Set([...(p[list] ?? []), domain])],
-      [other]: (p[other] ?? []).filter((d) => d !== domain),
-    });
-    setToast(list === "domains" ? `${domain} added to your trusted sources` : `${domain} blocked`);
+  async function addDomain(site: string, list: "domains" | "blockedDomains") {
+    if (await send(`/api/newsletters/${id}/sites`, "POST", { site, list })) {
+      setToast(list === "domains" ? `${site} added to the sites you trust` : `${site} blocked`);
+      await load();
+    }
   }
 
   async function vote(storyIndex: number, v: "up" | "down", note?: string) {
     if (!issue) return;
-    const res = await fetch(`/api/issues/${issue.id}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ votes: [{ storyIndex, vote: v, note }] }),
-    });
-    if (!res.ok) {
-      setError(`Your vote couldn't be saved: ${(await res.json()).error}`);
-      return;
-    }
+    const res = await send(`/api/issues/${issue.id}/feedback`, "POST", { votes: [{ storyIndex, vote: v, note }] });
+    if (!res) return;
     const updated = (await res.json()) as Newsletter;
     setCurrent((c) => (c ? { ...c, newsletter: updated } : c));
     setToast(note ? "Reason noted" : "Noted. The next issue will use this.");
@@ -131,8 +152,18 @@ export default function NewsletterPage() {
 
   async function reset() {
     if (!confirm("Forget everything learned from your votes and which stories it already sent?")) return;
-    await fetch(`/api/newsletters/${id}/reset`, { method: "POST" });
+    if (await send(`/api/newsletters/${id}/reset`, "POST")) await load();
+  }
+
+  async function pauseOrResume(action: "pause" | "resume", opts?: { until?: string; catchUp?: boolean }) {
+    if (!(await send(`/api/newsletters/${id}/${action}`, "POST", opts ?? {}))) return;
     await load();
+    router.refresh();
+    setToast(
+      action === "pause" ? "Paused. Nothing will be written or sent until you resume."
+        : opts?.catchUp ? "Resumed. The next issue catches you up on the best of what you missed."
+          : "Resumed from today. The next issue starts fresh.",
+    );
   }
 
   if (missing) {
@@ -147,6 +178,7 @@ export default function NewsletterPage() {
   const nl = current?.newsletter;
   const issue = current?.issues[issueIdx];
   const lastStep = log.at(-1)?.step;
+  const paused = nl ? isPaused(nl) : false;
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8">
@@ -158,7 +190,12 @@ export default function NewsletterPage() {
         <span className="text-ink">{nl?.profile.name ?? "…"}</span>
       </nav>
 
-      {error && <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</div>}
+      {problem && (
+        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+          {problem.message}
+          {problem.locked && <UnlockForm onUnlocked={() => { setProblem(null); setToast("Unlocked. Try again."); }} />}
+        </div>
+      )}
 
       {nl && (
         <div className="mt-4 space-y-6">
@@ -167,30 +204,38 @@ export default function NewsletterPage() {
               <h1 className="text-4xl font-extrabold tracking-tight">{nl.profile.name}</h1>
               <p className="mt-1 text-stone-600 dark:text-stone-400">{nl.profile.topic}</p>
               <p className="mt-2 text-sm text-stone-500">
-                {nl.autoIssues ? "Automatic, " : "Manual, "}
-                {nl.profile.cadence === "daily" ? "daily" : "weekly"}, up to {nl.profile.storyCount} stories, written in{" "}
-                {LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language}, searched in{" "}
-                {(nl.profile.searchLanguages ?? ["en"]).map((l) => LANGUAGE_NAMES[l] ?? l).join(" and ")}
+                {describeDelivery(deliveryOf(nl))}, up to {nl.profile.storyCount} stories, in {LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language}
+                {" · "}
+                {paused ? <span className="font-semibold text-caution">Paused</span> : (
+                  <>Next issue {nextSlot(nl).toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: deliveryOf(nl).timezone })}</>
+                )}
               </p>
             </div>
-            <div className="flex gap-2">
-              <button onClick={reset} disabled={running} title="Forget votes and already-sent stories. Handy while testing." className="btn btn-secondary">
-                Reset memory
-              </button>
-              <button onClick={generate} disabled={running} className="btn btn-primary">
-                {running ? "Researching…" : current?.issues.length ? "Write the next issue" : "Write the first issue"}
+            <div className="flex flex-wrap gap-2">
+              <PauseControl newsletter={nl} onChange={pauseOrResume} />
+              <button onClick={generate} disabled={running} className="btn btn-primary" title="Don't wait for the next delivery day">
+                {running ? "Researching…" : current?.issues.length ? "Write one now" : "Write the first issue"}
               </button>
             </div>
           </header>
 
+          {paused && <PausedBanner newsletter={nl} onResume={(catchUp) => pauseOrResume("resume", { catchUp })} />}
+
           {justCreated && (
             <div className="rounded-lg bg-stamp-soft px-4 py-3 text-[15px]">
-              Your description is now this brief. Check the sources and topics below, then write the first issue.
+              Your first issue is being researched and written. It takes a few minutes; you can watch each step below.
+              Email delivery is coming: for now, issues are read here.
             </div>
           )}
 
           {(running || log.length > 0) && (
             <div className="rounded-lg border border-rule bg-sheet p-4">
+              {running && (
+                <Gummy
+                  message={current?.issues.length ? "Nemotron is writing your next issue" : "Nemotron is writing your first issue"}
+                  detail="Searching the web, checking every date and dropping repeats. A few minutes: it's a newsletter, not a chat."
+                />
+              )}
               <ol className="flex flex-wrap items-center gap-2 text-sm">
                 {PIPELINE.map((p, i) => {
                   const idx = PIPELINE.findIndex((x) => x.key === lastStep);
@@ -205,55 +250,33 @@ export default function NewsletterPage() {
                   );
                 })}
               </ol>
-              <pre className="mt-3 max-h-40 overflow-auto rounded bg-stone-950 p-3 text-xs text-stone-200">
-                {log.map((l) => `${l.t.padStart(4)}  ${l.step}${l.detail ? `: ${l.detail}` : ""}`).join("\n")}
-                {running ? "\n   …" : ""}
-              </pre>
+              <details className="mt-3 text-sm text-stone-500">
+                <summary className="cursor-pointer">What it is doing</summary>
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-stone-950 p-3 text-xs text-stone-200">
+                  {log.map((l) => `${l.t.padStart(4)}  ${l.step}${l.detail ? `: ${l.detail}` : ""}`).join("\n")}
+                  {running ? "\n   …" : ""}
+                </pre>
+              </details>
             </div>
           )}
 
           <div className="flex flex-wrap items-center gap-1 border-b border-rule">
-            {([["issue", "Issue"], ["hood", "Under the hood"], ["settings", "Settings"]] as const).map(([k, label]) => (
+            {([["issue", "Issue"], ["sources", "Sources"], ["settings", "Settings"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)} className={`-mb-px min-h-11 border-b-2 px-4 py-2.5 text-[15px] ${tab === k ? "border-ink font-semibold" : "border-transparent text-stone-500 hover:text-ink"}`}>
                 {label}
               </button>
             ))}
-            {current && current.issues.length > 0 && tab === "hood" && (
-              <select value={issueIdx} onChange={(e) => setIssueIdx(Number(e.target.value))} aria-label="Issue" className="ml-auto max-w-sm rounded-md border border-rule bg-sheet p-1.5 text-xs">
-                {current.issues.map((i, idx) => (
-                  <option key={i.id} value={idx}>Issue {i.number ?? current.issues.length - idx}, {i.date}, {usd(i.trace.totals.costUsd)}</option>
-                ))}
-              </select>
-            )}
+            <button
+              onClick={() => setTab("hood")}
+              title="How each issue was made, what it cost, and the brief: for the jury"
+              className={`-mb-px ml-auto inline-flex min-h-11 items-center gap-2 border-b-2 px-4 py-2.5 text-[15px] ${tab === "hood" ? "border-stamp font-semibold text-stamp" : "border-transparent text-stone-500 hover:text-stamp"}`}
+            >
+              <Wrench size={15} /> Under the hood
+            </button>
           </div>
 
-          {tab === "settings" && (
-            <Settings
-              key={nl.id + JSON.stringify(nl.profile) + JSON.stringify(nl.memory)}
-              newsletter={nl}
-              onAutoIssues={async (on) => {
-                await fetch(`/api/newsletters/${id}/schedule`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ autoIssues: on }),
-                });
-                await load();
-                router.refresh();
-                setToast(on ? "Automatic issues on" : "Automatic issues off");
-              }}
-              onSave={async (profile, memory) => {
-                await fetch(`/api/newsletters/${id}/memory`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(memory),
-                });
-                await patchProfile(profile);
-                setToast("Settings saved. They apply from the next issue.");
-              }}
-            />
-          )}
-          {tab !== "settings" && !issue && !running && (
-            <p className="text-stone-500">No issues yet. Check the brief in Settings, then write the first issue.</p>
+          {tab === "issue" && !issue && !running && (
+            <p className="text-stone-500">No issues yet. The first one arrives on the next delivery day, or write it now.</p>
           )}
           {tab === "issue" && issue && current && (
             <IssueView
@@ -272,7 +295,59 @@ export default function NewsletterPage() {
               onOpenTrace={() => setTab("hood")}
             />
           )}
-          {tab === "hood" && issue && <UnderTheHood issue={issue} onDomain={addDomain} />}
+
+          {tab === "sources" && (
+            <SourcesPanel newsletter={nl} onPatch={patchProfile} onError={(message, locked) => setProblem({ message, locked })} onToast={setToast} />
+          )}
+
+          {tab === "settings" && (
+            <Settings
+              key={nl.id + JSON.stringify(nl.profile) + JSON.stringify(nl.memory) + JSON.stringify(nl.delivery ?? null)}
+              newsletter={nl}
+              onDelete={async () => {
+                if (await send(`/api/newsletters/${id}`, "DELETE")) {
+                  router.push("/newsletters");
+                  router.refresh();
+                }
+              }}
+              onSave={async (profile, memory, delivery) => {
+                if (!(await send(`/api/newsletters/${id}/delivery`, "PATCH", delivery))) return;
+                await send(`/api/newsletters/${id}/memory`, "PATCH", memory);
+                await patchProfile(profile);
+                setToast("Settings saved. They apply from the next issue.");
+              }}
+            />
+          )}
+
+          {tab === "hood" && (
+            <div className="space-y-6">
+              <section className="grid gap-6 rounded-2xl border border-dashed border-stamp/40 bg-stamp-soft/40 p-6 md:grid-cols-[1fr_auto]">
+                <div>
+                  <h2 className="font-semibold">The brief Nemotron wrote</h2>
+                  <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">
+                    From your description, &ldquo;{nl.description}&rdquo;. The planner, the scorer and the editor read it every issue.
+                  </p>
+                  <dl className="mt-4 grid gap-x-8 gap-y-3 text-[15px] sm:grid-cols-2">
+                    <div><dt className="text-xs text-stone-500">Topic</dt><dd>{nl.profile.topic}</dd></div>
+                    <div><dt className="text-xs text-stone-500">Written for</dt><dd>{nl.profile.audience}</dd></div>
+                    <div><dt className="text-xs text-stone-500">Tone</dt><dd>{nl.profile.tone}</dd></div>
+                    <div><dt className="text-xs text-stone-500">Searches in</dt><dd>{(nl.profile.searchLanguages ?? ["en"]).map((l) => LANGUAGE_NAMES[l] ?? l).join(", ")}</dd></div>
+                  </dl>
+                </div>
+                <div className="flex flex-col items-start gap-2 md:items-end">
+                  <button onClick={reset} disabled={running} title="Forget votes and already-sent stories. Handy while testing." className="btn btn-secondary">Reset memory</button>
+                  {current && current.issues.length > 0 && (
+                    <select value={issueIdx} onChange={(e) => setIssueIdx(Number(e.target.value))} aria-label="Issue" className="max-w-xs rounded-md border border-rule bg-sheet p-2 text-sm">
+                      {current.issues.map((i, idx) => (
+                        <option key={i.id} value={idx}>Issue {i.number ?? current.issues.length - idx}, {i.date}, {usd(i.trace.totals.costUsd)}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </section>
+              {issue ? <UnderTheHood issue={issue} onDomain={addDomain} /> : <p className="text-stone-500">No issue yet: the trace appears after the first one.</p>}
+            </div>
+          )}
         </div>
       )}
     </main>

@@ -11,7 +11,8 @@ Everything in this repo is English (it becomes public for the submission). No em
 ## Run it locally
 
 ```bash
-pg_ctl -D /opt/homebrew/var/postgresql@17 start   # local Postgres is not a login service
+# local Postgres is not a login service; the pg_ctl on PATH is v16, use the v17 binary
+/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/var/postgresql@17 -l /opt/homebrew/var/log/pg17.log start
 npm run db:migrate
 npm run dev -- -p 3007
 npm run worker          # writes every automatic newsletter that is due, once
@@ -27,19 +28,30 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 
 | Step | Runs on | Notes |
 |------|---------|-------|
-| Plan | Nemotron 3.5 Lightning | At least half the searches name watchlist entries |
+| Plan | Nemotron 3.5 Lightning | At least half the searches name watchlist entries; reads click signals |
+| Subscriptions | Nemotron 3 Nano, reasoning off | Runs in parallel with Search. Emails, podcast transcripts and feed posts in the window, split into news items (cached in `inbox_items.extracted`); +1 score because the reader chose them |
 | Search | Tavily, advanced, 20 results | Language filtered; social networks excluded; trusted sites get their own search |
 | Score | Nemotron 3 Nano | Relevance 0-10, event key, source language |
 | Verify dates | Page metadata, no model | YouTube upload date; Reddit is never contacted (blocks without API key), dated by the search window |
 | Filter | Rules | Drops wrong language, too old, undated (unless allowed), low score, blocked |
 | Check memory | Nemotron 3.5 Lightning | Whole history in context, no RAG needed at this scale; failure degrades to exact key match |
-| Write | Nemotron 3 Ultra | Max 2 stories per publisher (YouTube channel / subreddit, not domain) |
+| Write | Nemotron 3 Ultra | Max 2 stories per publisher; style preset, jokes, "by the numbers"; `alsoIn` = other sources with the same news (coverage = importance) |
 
+- After writing, `reviewDraft` (Nano, reasoning on) cuts stories that misreport their source or nearly repeat one above; reserves fill the gap. Added 2026-10-05 after a Nintendo headline linked to another story's patch notes.
+- Style = length (`rundown | straight | dense | deep`) + voice (`neutral | playful`) + extras (jokes, visual summary, mind map). Old "playful"/"brief" presets are read through `normalizeStyle`.
+- Reasoning off (`thinking: false` -> `chat_template_kwargs.enable_thinking=false`) only for mechanical jobs. Measured 2026-10-05: Lightning without reasoning got "same news?" wrong. Never for dedup.
+- Subscriptions (`lib/subscriptions.ts`): each newsletter has an inbox address `<inbox_token>@INBOX_DOMAIN`; inbound mail must be POSTed to `/api/inbound/email?key=INBOUND_SECRET` (any provider; payload normalized in `lib/adapters/email.ts`). Podcasts and sites by RSS (`lib/adapters/feeds.ts`, Apple Podcasts search, no key). Token Factory has no speech-to-text: podcasts use the publisher's `<podcast:transcript>` or show notes.
+- Delivery: days of the week + hour + time zone (`lib/core/schedule.ts`), at most one issue a day. Pause keeps everything; resume either catches up (window from last issue) or starts fresh (`window_floor`). Schedule workflow is hourly now.
+- Clicks: story links go through `/r/<issueId>/<index>`; `readingSignals()` turns them into opened/shown per theme and publisher for planner and editor. Computed, never stored in memory.
+- Product vs jury (decided 2026-10-05): reader tabs are Issue, Sources, Settings. "Under the hood" (trace, costs, checks, the brief, reset memory) is set apart for the jury and becomes internal later. Costs never appear in reader views. Spending and schedule live at `/admin`.
+- Public demo: anyone reads; every write/paid API route calls `denyWithoutAccess()` (`lib/access.ts`). Set `DEMO_ACCESS_CODE` in production and put the code in the Devpost testing instructions. Unset locally = open.
+- Email newsletters and podcasts are built but shown as "Coming soon" (`lib/features.ts`, enable with `N41_FEATURES=newsletters,podcasts`); while off, issues ignore those items. Trusted sites double as RSS follows; YouTube channels are followed by their feed.
+- Issues always write themselves on delivery days (`autoIssues` true for every newsletter); Pause is the only off switch. "Write one now" stays for demos.
 - Only NVIDIA models on Nebius Token Factory are allowed by the rules. Model per role in `lib/adapters/nebius.ts`.
 - Core in `lib/core` is vendor-free; adapters in `lib/adapters` (house rule of the HACKATON folder).
 - Daily spending cap (`lib/budget.ts`, `DAILY_CAP_EUR=5`): everything paid reserves an estimate, then settles the real cost.
 - Automatic issues (`lib/worker.ts`) are off by default per newsletter.
-- Nebius Jobs have no native schedule: `.github/workflows/schedule.yml` launches the worker job daily. Inactive until repo variable `NEBIUS_JOBS_ENABLED=true`.
+- Nebius Jobs have no native schedule: `.github/workflows/schedule.yml` launches the worker job hourly. Inactive until repo variable `NEBIUS_JOBS_ENABLED=true`.
 - A typical issue: about $0.19 ($0.14 Tavily) and 3 to 5 minutes. Slow is fine: it's a newsletter.
 - Record every platform friction in `FEEDBACK.md` with date and repro as it happens (required for submission, and a prize).
 
@@ -67,6 +79,10 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 
 ## Known issues
 
+- Inbound email needs a real domain with MX to an inbound provider before it works outside
+  localhost. Locally, use "Paste an email" in Subscriptions or POST to the webhook.
+- The hourly schedule launches a Nebius Job every hour even when nothing is due. Cheap, but the
+  check could move into the GitHub Action before launching.
 - Lightning sometimes returns broken JSON or its reasoning instead of JSON; the adapter retries
   once showing the model its own output. Watch for it in traces.
 - A recent source can report old news (a 2026-09 video about a fix released in May). Triage

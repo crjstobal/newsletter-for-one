@@ -2,27 +2,44 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { EXAMPLES, LANGUAGES } from "../../components/examples";
+import { PenLine } from "lucide-react";
+import { TOPICS } from "../../components/examples";
+import { Gummy } from "../../components/Gummy";
+import { SetupSteps } from "../../components/SetupSteps";
+import { UnlockForm } from "../../components/UnlockForm";
 
-const NEXT = [
-  { title: "It writes a brief", body: "Who the newsletter is for, what to cover, what to skip, which sites and communities to watch." },
-  { title: "You review it", body: "Change anything: sources you trust or block, language, how many stories, how often." },
-  { title: "You get the first issue", body: "Researched and written in a couple of minutes, with every source dated." },
-];
+/** The "write it myself" choice: an empty box instead of a starting text. */
+const OWN = "__own__";
 
+/** Step 1 of setting up a newsletter: what it is about. Sources and settings follow. */
 export default function NewNewsletter() {
   const router = useRouter();
   const [description, setDescription] = useState("");
-  const [language, setLanguage] = useState("");
+  const [topic, setTopic] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     // Arriving from the homepage with a description already written.
     const pre = new URLSearchParams(window.location.search).get("describe");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (pre) setDescription(pre);
+    if (pre) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDescription(pre);
+      setTopic(OWN);
+    }
   }, []);
+
+  /** Clicking the selected choice again clears it and hides the box. */
+  function pick(next: string, text: string) {
+    if (topic === next) {
+      setTopic(null);
+      setDescription("");
+      return;
+    }
+    setTopic(next);
+    setDescription(text);
+  }
 
   async function create() {
     setCreating(true);
@@ -31,11 +48,15 @@ export default function NewNewsletter() {
       const res = await fetch("/api/newsletters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, language }),
+        // No language picker: issues are written in the language the reader wrote in.
+        body: JSON.stringify({ description }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      router.push(`/newsletters/${data.id}?tab=settings&new=1`);
+      if (!res.ok) {
+        setLocked(Boolean(data.locked));
+        throw new Error(data.error);
+      }
+      router.push(`/newsletters/${data.id}/setup`);
       router.refresh();
     } catch (err) {
       setError(`Couldn't create the newsletter: ${(err as Error).message}`);
@@ -44,71 +65,86 @@ export default function NewNewsletter() {
   }
 
   return (
-    <main className="mx-auto grid max-w-6xl gap-14 px-5 py-12 lg:grid-cols-[1.3fr_1fr]">
-      <div>
-        <h1 className="text-4xl font-extrabold tracking-tight">Start a newsletter</h1>
-        <p className="mt-3 max-w-xl text-lg text-stone-600 dark:text-stone-400">
-          Say what you want to follow and who you are. The more specific, the better the first issue.
-        </p>
+    <main className="mx-auto max-w-3xl px-5 py-12">
+      <SetupSteps current={0} />
+      <h1 className="mt-8 text-4xl font-extrabold tracking-tight">What should it be about?</h1>
+      <p className="mt-3 text-lg text-stone-600 dark:text-stone-400">Start from a topic, or describe exactly the newsletter you wish existed.</p>
 
+      <button
+        type="button"
+        aria-pressed={topic === OWN}
+        onClick={() => pick(OWN, "")}
+        className={`mt-8 flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all duration-150 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${
+          topic === OWN ? "border-stamp bg-stamp-soft" : "border-stamp/50 bg-sheet hover:border-stamp hover:shadow-sm"
+        }`}
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-stamp text-white"><PenLine size={19} /></span>
+        <span>
+          <span className="block text-lg font-bold">Write it myself</span>
+          <span className="block text-[15px] text-stone-600 dark:text-stone-400">Describe it in your own words: who you are, what you want, what to skip.</span>
+        </span>
+      </button>
+
+      <fieldset className="mt-6">
+        <legend className="mb-2 text-sm font-semibold text-stone-600 dark:text-stone-400">Or start from a topic</legend>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {TOPICS.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              aria-pressed={topic === t.label}
+              onClick={() => pick(t.label, t.text)}
+              className={`flex h-12 items-center rounded-xl border px-4 text-left text-[15px] font-medium transition-all duration-150 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${
+                topic === t.label ? "border-stamp bg-stamp-soft ring-1 ring-stamp" : "border-rule bg-sheet hover:border-stone-400 hover:shadow-sm"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      {topic && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (description.trim() && !creating) create();
           }}
-          className="mt-8 space-y-5"
+          className="mt-8 space-y-5 rounded-2xl border border-rule bg-sheet p-6"
         >
           <div>
-            <label htmlFor="describe" className="mb-1.5 block text-sm font-semibold">What should it cover?</label>
+            <label htmlFor="describe" className="mb-1.5 block text-sm font-semibold">
+              {topic === OWN ? "Describe your newsletter" : "Make it yours"}
+            </label>
             <textarea
               id="describe"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={6}
+              rows={5}
+              autoFocus
               placeholder="I edit YouTube videos in Final Cut Pro. I want new plugins, app updates and good tutorials, not beginner basics."
-              className="w-full rounded-lg border border-rule bg-sheet p-3 text-[15px] leading-relaxed"
+              className="w-full rounded-lg border border-rule bg-paper p-3 text-[15px] leading-relaxed"
             />
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-stone-500">Or start from:</span>
-              {EXAMPLES.map((ex) => (
-                <button key={ex.label} type="button" onClick={() => setDescription(ex.text)} className="rounded-full border border-rule px-2.5 py-0.5 text-xs text-stone-600 hover:border-stone-400 dark:text-stone-400">
-                  {ex.label}
-                </button>
-              ))}
+            <p className="mt-1.5 text-sm text-stone-500">
+              {topic === OWN ? "" : "A starting point: add who you are and what to skip (“I'm a beginner”, “no rumors”). "}
+              Don&apos;t worry, you can change all of this later.
+            </p>
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+              {error}
+              {locked && <UnlockForm onUnlocked={() => { setError(null); setLocked(false); }} />}
             </div>
-          </div>
+          )}
 
-          <div className="max-w-xs">
-            <label htmlFor="lang" className="mb-1.5 block text-sm font-semibold">Write it in</label>
-            <select id="lang" value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full rounded-lg border border-rule bg-sheet p-2 text-sm">
-              <option value="">The language I wrote in</option>
-              {LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-            </select>
-            <p className="mt-1.5 text-xs text-stone-500">Searches still run wherever the best sources are, usually in English.</p>
-          </div>
-
-          {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
-
-          <button type="submit" disabled={creating || !description.trim()} className="btn btn-primary btn-lg">
-            {creating ? "Writing the brief…" : "Create the brief"}
-          </button>
+          {creating ? (
+            <Gummy message="Nemotron is looking for sources" detail="Reading your description, picking the sites, communities and names worth following. About 20 seconds." />
+          ) : (
+            <button type="submit" disabled={!description.trim()} className="btn btn-primary btn-lg">Next: sources</button>
+          )}
         </form>
-      </div>
-
-      <aside className="lg:pt-20">
-        <h2 className="font-semibold">What happens next</h2>
-        <ol className="mt-4 space-y-6">
-          {NEXT.map((n, i) => (
-            <li key={n.title} className="grid grid-cols-[2rem_1fr] gap-3">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-rule text-sm font-bold text-stone-500">{i + 1}</span>
-              <div>
-                <p className="font-semibold">{n.title}</p>
-                <p className="mt-0.5 text-[15px] text-stone-600 dark:text-stone-400">{n.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </aside>
+      )}
     </main>
   );
 }

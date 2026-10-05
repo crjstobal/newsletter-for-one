@@ -2,15 +2,20 @@
  * The contracts the core depends on. The core never imports a vendor adapter directly:
  * adapters (Nebius Token Factory, Tavily) implement these interfaces and are injected.
  */
-import type { TraceLLMCall, TraceSearch } from "./types";
+import type { ExtractedItem, InboxItem, Origin, TraceLLMCall, TraceSearch } from "./types";
 
-export type Role = "planner" | "triage" | "dedup" | "editor" | "memory";
+export type Role = "planner" | "triage" | "dedup" | "editor" | "memory" | "extract";
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 export interface LLM {
   /** Returns parsed JSON produced by the model assigned to `role`. */
-  json<T>(role: Role, messages: ChatMessage[], opts?: { maxTokens?: number; note?: string }): Promise<T>;
+  /**
+   * `thinking: false` turns the model's reasoning off: about 100x fewer output tokens on
+   * mechanical jobs (splitting a newsletter into items). Never for judgment calls like "is this
+   * the same news?", where it measurably gets answers wrong.
+   */
+  json<T>(role: Role, messages: ChatMessage[], opts?: { maxTokens?: number; note?: string; thinking?: boolean }): Promise<T>;
   /** Model id assigned to each role, for reporting. */
   models: Record<Role, string>;
 }
@@ -34,6 +39,8 @@ export type SearchHit = {
   content: string;
   publishedDate?: string; // YYYY-MM-DD when known
   score?: number;
+  origin?: Origin; // default "web"
+  via?: string; // subscription name, for items from the reader's own subscriptions
 };
 
 export interface Search {
@@ -50,6 +57,16 @@ export type ResolvedDate = { date?: string; withinWindow?: boolean; note: string
  */
 export interface DateResolver {
   resolve(url: string): Promise<ResolvedDate>;
+}
+
+/**
+ * The reader's own subscriptions (newsletters by email, podcasts, feeds). `collect` refreshes
+ * the feeds and returns everything received in the window; `saveExtraction` caches the split
+ * of an item into separate news, so a long email is only read once.
+ */
+export interface Subscriptions {
+  collect(since: string): Promise<{ items: InboxItem[]; errors: string[] }>;
+  saveExtraction(itemId: string, items: ExtractedItem[]): Promise<void>;
 }
 
 /** Every external call is recorded here, so each issue carries a full account of its cost. */

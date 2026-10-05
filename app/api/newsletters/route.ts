@@ -1,3 +1,4 @@
+import { denyWithoutAccess } from "@/lib/access";
 import { createNewsletter } from "@/lib/service";
 import { store } from "@/lib/store";
 
@@ -7,6 +8,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await denyWithoutAccess();
+  if (denied) return denied;
   const { description, language } = (await request.json()) as { description?: string; language?: string };
   if (!description?.trim()) return Response.json({ error: "Describe your newsletter" }, { status: 400 });
   try {

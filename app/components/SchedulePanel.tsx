@@ -8,7 +8,7 @@ import { Tip, shortDate } from "./ui";
 type Schedule = {
   today: string;
   budget: { capEur: number; spentEur: number; leftEur: number; issueEstimateEur: number };
-  newsletters: { id: string; name: string; cadence: string; autoIssues: boolean; nextIssueDate: string; due: boolean }[];
+  newsletters: { id: string; name: string; cadence: string; delivery: string; autoIssues: boolean; paused: boolean; pausedUntil?: string; nextIssueAt: string; due: boolean }[];
   runs: { id: number; startedAt: string; finishedAt?: string; trigger: string; status: string; summary?: string }[];
 };
 
@@ -79,7 +79,7 @@ export function SchedulePanel() {
           <h2 className="flex items-center gap-2 font-semibold">
             <CalendarClock size={17} />
             <Tip text="Newsletters with automatic issues on are written by the scheduled worker when their next issue is due. In production a Nebius Serverless Job runs it on a schedule; here you can run it by hand.">
-              Automatic issues
+              Upcoming issues
             </Tip>
           </h2>
           <button onClick={runNow} disabled={starting || running} className="btn btn-secondary !min-h-10">
@@ -92,14 +92,16 @@ export function SchedulePanel() {
             {auto.map((n) => (
               <li key={n.id} className="flex items-center justify-between gap-3 py-2">
                 <Link href={`/newsletters/${n.id}`} className="truncate font-medium hover:underline">{n.name}</Link>
-                <span className={`shrink-0 text-sm ${n.due ? "font-semibold text-stamp" : "text-stone-500"}`}>
-                  {n.due ? "Due now" : `Next ${shortDate(n.nextIssueDate)}`}
+                <span className={`shrink-0 text-sm ${n.due ? "font-semibold text-stamp" : n.paused ? "font-semibold text-caution" : "text-stone-500"}`} title={n.delivery}>
+                  {n.paused
+                    ? n.pausedUntil ? `Paused until ${shortDate(n.pausedUntil)}` : "Paused"
+                    : n.due ? "Due now" : `Next ${new Date(n.nextIssueAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-[15px] text-stone-500">None yet. Turn on automatic issues in a newsletter&apos;s Settings.</p>
+          <p className="mt-3 text-[15px] text-stone-500">No newsletters yet.</p>
         )}
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
