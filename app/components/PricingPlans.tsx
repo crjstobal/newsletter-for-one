@@ -6,7 +6,7 @@ import { useState } from "react";
 
 type Plan = {
   name: string;
-  monthly: number | null; // null: custom
+  monthly: number;
   pitch: string;
   features: string[];
   cta: string;
@@ -43,13 +43,6 @@ const PLANS: Plan[] = [
     features: ["20 newsletters", "Every day, weekends included", "Up to 10 stories per issue", "Unlimited sources", "Everything in Advanced", "First access to new features"],
     cta: "Start free",
   },
-  {
-    name: "Custom",
-    monthly: null,
-    pitch: "Teams, agencies and briefings for a whole company.",
-    features: ["Shared newsletters for a team", "Your own sources and internal feeds", "Custom delivery and branding", "Higher limits", "Invoice billing"],
-    cta: "Talk to us",
-  },
 ];
 
 /** Yearly billing: two months free. */
@@ -70,29 +63,23 @@ export function PricingPlans() {
         </div>
       </div>
 
-      <ul className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {PLANS.map((p) => (
           <li key={p.name} className={`relative flex flex-col rounded-2xl border bg-sheet p-6 ${p.featured ? "border-stamp shadow-[0_24px_48px_-28px_rgba(91,63,196,0.55)] ring-1 ring-stamp" : "border-rule"}`}>
             {p.featured && <span className="absolute -top-3 left-6 rounded-full bg-stamp px-3 py-1 text-xs font-bold text-white">Most popular</span>}
             <h2 className="text-xl font-bold">{p.name}</h2>
             <p className="mt-1 min-h-[4.5rem] text-[15px] text-stone-600 dark:text-stone-400">{p.pitch}</p>
             <p className="mt-5">
-              {p.monthly === null ? (
-                <span className="text-4xl font-extrabold tracking-tight">Let&apos;s talk</span>
-              ) : (
-                <>
-                  <span className="text-4xl font-extrabold tabular-nums tracking-tight">${yearly ? yearlyPerMonth(p.monthly).toFixed(2).replace(/\.00$/, "") : p.monthly}</span>
-                  <span className="text-stone-500"> / month</span>
-                </>
-              )}
+              <span className="text-4xl font-extrabold tabular-nums tracking-tight">${yearly ? yearlyPerMonth(p.monthly).toFixed(2).replace(/\.00$/, "") : p.monthly}</span>
+              <span className="text-stone-500"> / month</span>
             </p>
-            <p className="mt-1 h-5 text-sm text-stone-500">{p.monthly !== null && yearly ? `$${p.monthly * 10} billed yearly` : p.monthly !== null ? "Billed monthly" : ""}</p>
+            <p className="mt-1 h-5 text-sm text-stone-500">{yearly ? `$${p.monthly * 10} billed yearly` : "Billed monthly"}</p>
             <ul className="mt-6 flex-1 space-y-2.5 text-[15px]">
               {p.features.map((f) => (
                 <li key={f} className="flex items-start gap-2.5"><Check size={17} className="mt-0.5 shrink-0 text-stamp" /> {f}</li>
               ))}
             </ul>
-            <Link href={p.monthly === null ? "mailto:hello@newsletterforone.app" : "/newsletters/new"} className={`btn mt-8 w-full justify-center ${p.featured ? "btn-primary" : "btn-secondary"}`}>
+            <Link href="/newsletters/new" className={`btn mt-8 w-full justify-center ${p.featured ? "btn-primary" : "btn-secondary"}`}>
               {p.cta}
             </Link>
           </li>
