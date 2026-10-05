@@ -30,10 +30,17 @@ const PLANS: Plan[] = [
     featured: true,
   },
   {
-    name: "Daily",
-    monthly: 49,
+    name: "Advanced",
+    monthly: 39,
     pitch: "For people whose work depends on knowing first.",
-    features: ["10 newsletters", "Daily, on the days you pick", "Up to 10 stories per issue", "Unlimited sources", "Everything in Plus", "Priority writing at your chosen hour"],
+    features: ["5 newsletters", "Every day, weekends included", "Up to 10 stories per issue", "Unlimited sources", "Everything in Plus", "Written at the hour you pick"],
+    cta: "Start free",
+  },
+  {
+    name: "Max",
+    monthly: 129,
+    pitch: "Every beat you follow, covered daily.",
+    features: ["20 newsletters", "Every day, weekends included", "Up to 10 stories per issue", "Unlimited sources", "Everything in Advanced", "First access to new features"],
     cta: "Start free",
   },
   {
@@ -63,7 +70,7 @@ export function PricingPlans() {
         </div>
       </div>
 
-      <ul className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <ul className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         {PLANS.map((p) => (
           <li key={p.name} className={`relative flex flex-col rounded-2xl border bg-sheet p-6 ${p.featured ? "border-stamp shadow-[0_24px_48px_-28px_rgba(91,63,196,0.55)] ring-1 ring-stamp" : "border-rule"}`}>
             {p.featured && <span className="absolute -top-3 left-6 rounded-full bg-stamp px-3 py-1 text-xs font-bold text-white">Most popular</span>}
