@@ -1,6 +1,6 @@
-# Every hour, launches the worker as a Nebius Serverless AI Job on a small CPU VM. Each
-# newsletter has its own delivery days, hour and time zone; the worker writes only those whose
-# slot has arrived and exits at once when nothing is due.
+# Once a day, launches the worker as a Nebius Serverless AI Job on a small CPU VM. Each
+# newsletter has its own delivery days, hour and time zone; the worker writes those whose slot
+# has arrived and exits. Daily while testing: hourly ("5 * * * *") honors every delivery hour.
 # Nebius jobs have no built-in schedule, so this cron is the trigger. The VM is billed only
 # while the job runs (a few minutes).
 #
@@ -12,7 +12,7 @@ name: Scheduled issues
 
 on:
   schedule:
-    - cron: "5 * * * *" # five past every hour
+    - cron: "5 6 * * *" # 06:05 UTC, 08:05 in Madrid (summer time)
   workflow_dispatch:
 
 jobs:
