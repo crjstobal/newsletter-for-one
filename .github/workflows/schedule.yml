@@ -20,6 +20,21 @@ jobs:
     if: vars.NEBIUS_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Check that GHCR_TOKEN can pull the worker image
+        env:
+          TOKEN: ${{ secrets.GHCR_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          IMAGE: ${{ github.repository }}-worker
+        run: |
+          # A classic token with read:packages is needed; fine-grained tokens can't read GHCR.
+          echo "token prefix: ${TOKEN:0:4}"
+          scopes=$(curl -sI -H "Authorization: token $TOKEN" https://api.github.com/user | tr -d '\r' | awk -F': ' 'tolower($1)=="x-oauth-scopes"{print $2}')
+          echo "token scopes: ${scopes:-none reported}"
+          reg=$(curl -s -u "$OWNER:$TOKEN" "https://ghcr.io/token?scope=repository:$IMAGE:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $reg" -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" "https://ghcr.io/v2/$IMAGE/manifests/latest")
+          echo "manifest status: $code"
+          [ "$code" = "200" ] || { echo "::error::GHCR_TOKEN cannot pull ghcr.io/$IMAGE:latest (HTTP $code). Use a classic token with read:packages."; exit 1; }
+
       - name: Install the Nebius AI Cloud CLI
         run: |
           curl -sSL https://artifacts.nebius.cloud/cli/install.sh | bash
