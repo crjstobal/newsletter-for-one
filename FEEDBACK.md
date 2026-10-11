@@ -35,6 +35,34 @@ onboarding, and whether we would build with it again.
 
 **Would we build with it again:** (to fill at the end)
 
+## Nebius AI Cloud (Serverless AI Jobs)
+
+**Used for:** running the scheduled worker that writes every newsletter on its delivery day,
+launched once a day from GitHub Actions with a service account.
+
+**What worked**
+- 2026-10-11: once unblocked, a probe job (`busybox`, `cpu-d3`, `2vcpu-8gb`) went from create to
+  COMPLETED in under a minute, and `nebius ai job logs` showed the output right away.
+- The CLI's `ai job create` hints after a failure (check profile, `ai job get`, `ai job logs`)
+  are helpful, and the docs' flags matched the CLI exactly.
+
+**What needs work**
+- 2026-10-11: before topping up billing, every action failed with a bare `PermissionDenied: No
+  permission`, for a user in the `admins` group with the tenant `admin` role: uploading a
+  service account key (both CLI and web console) and creating a job. Nothing said billing was
+  the cause. A message like "top up your balance to use AI Cloud" would have saved an hour.
+- 2026-10-11: after topping up, jobs in the default `eu-north1` project failed with
+  `compute.instance.non-gpu.vcpu (limit 0)`, while `eu-west1`, `uk-south1` and others had
+  200 vCPU. The default project of a new tenant being the one region with zero CPU quota is a
+  trap; the error could suggest the regions where quota exists.
+- The CLI install URL moved (`storage.eu-north1.nebius.cloud` to `artifacts.nebius.cloud`);
+  older snippets in blog posts and READMEs still point at the old one.
+
+**Onboarding:** CLI install and browser login: 2 minutes. Billing and quota: about an hour of
+guessing from generic errors.
+
+**Would we build with it again:** (to fill at the end)
+
 ## NVIDIA Nemotron models
 
 ### nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B

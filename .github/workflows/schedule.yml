@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Install the Nebius AI Cloud CLI
         run: |
-          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+          curl -sSL https://artifacts.nebius.cloud/cli/install.sh | bash
           echo "$HOME/.nebius/bin" >> "$GITHUB_PATH"
 
       - name: Authenticate as the service account
