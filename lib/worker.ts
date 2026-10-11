@@ -12,6 +12,8 @@ import type { Newsletter } from "./core/types";
  */
 
 const TZ = process.env.BUDGET_TZ ?? "Europe/Madrid";
+/** Newsletters written at the same time by one worker run. */
+const PARALLEL = Number(process.env.WORKER_PARALLEL ?? 3);
 
 export const todayIn = (tz = TZ) => dateIn(tz);
 
@@ -40,19 +42,26 @@ export async function runDue(trigger: "cli" | "web" | "nebius-job", log: (m: str
   try {
     const due = await dueNewsletters();
     note(due.length ? `${due.length} due: ${due.map((n) => n.profile.name).join(", ")}` : "nothing due");
-    for (const nl of due) {
-      try {
-        const issue = await runIssue(nl.id, (step, detail) => log(`  ${nl.profile.name}: ${step}${detail ? ` (${detail})` : ""}`));
-        note(`${nl.profile.name}: issue ${issue.number}, ${issue.stories.length} stories, $${issue.trace.totals.costUsd.toFixed(3)}`);
-      } catch (err) {
-        if (err instanceof BudgetExceeded) {
-          note(`stopped: ${err.message}`);
-          break;
+    // A few newsletters at a time: each issue spends most of its minutes waiting on the models.
+    // The budget reservation is serialized in the database, so the cap still holds.
+    let stopped = false;
+    const queue = [...due];
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, async () => {
+      for (let nl = queue.shift(); nl && !stopped; nl = queue.shift()) {
+        try {
+          const issue = await runIssue(nl.id, (step, detail) => log(`  ${nl!.profile.name}: ${step}${detail ? ` (${detail})` : ""}`));
+          note(`${nl.profile.name}: issue ${issue.number}, ${issue.stories.length} stories, $${issue.trace.totals.costUsd.toFixed(3)}`);
+        } catch (err) {
+          if (err instanceof BudgetExceeded) {
+            stopped = true;
+            note(`stopped: ${err.message}`);
+            return;
+          }
+          status = "failed";
+          note(`${nl.profile.name}: failed: ${(err as Error).message}`);
         }
-        status = "failed";
-        note(`${nl.profile.name}: failed: ${(err as Error).message}`);
       }
-    }
+    }));
   } catch (err) {
     status = "failed";
     note(`failed: ${(err as Error).message}`);

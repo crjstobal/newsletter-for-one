@@ -55,7 +55,7 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 - Core in `lib/core` is vendor-free; adapters in `lib/adapters` (house rule of the HACKATON folder).
 - Daily spending cap (`lib/budget.ts`, `DAILY_CAP_EUR=5`): everything paid reserves an estimate, then settles the real cost.
 - Automatic issues (`lib/worker.ts`) are off by default per newsletter.
-- Nebius Jobs have no native schedule: `.github/workflows/schedule.yml` launches the worker job once a day (06:05 UTC) while testing. Inactive until repo variable `NEBIUS_JOBS_ENABLED=true`.
+- Nebius Jobs have no native schedule: `.github/workflows/schedule.yml` launches the worker job every 5 days (06:05 UTC) while testing, 3 newsletters in parallel (`WORKER_PARALLEL`). Inactive until repo variable `NEBIUS_JOBS_ENABLED=true`.
 - A typical issue: about $0.19 ($0.14 Tavily) and 3 to 5 minutes. Slow is fine: it's a newsletter.
 - Record every platform friction in `FEEDBACK.md` with date and repro as it happens (required for submission, and a prize).
 
