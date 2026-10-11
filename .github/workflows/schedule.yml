@@ -49,7 +49,7 @@ jobs:
             --registry-password "${{ secrets.GHCR_TOKEN }}" \
             --platform cpu-d3 \
             --preset 2vcpu-8gb \
-            --disk-size 50Gi \
+            --disk-size 20Gi \
             --timeout 1h \
             --env "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
             --env "NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}" \
