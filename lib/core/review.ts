@@ -4,8 +4,10 @@ const SYSTEM = `You are the last check before a newsletter issue is sent. You re
 drafted stories, ranked best first. Each one has the source it must be based on (title and text).
 
 Flag a story when:
-- "mismatch": the headline or summary describes something the source does not report (the
-  writer mixed up two sources, or reported a different event than its source);
+- "mismatch": the story is about a different event, product or company than its source (the
+  writer mixed up two sources). Only flag it when the source is clearly about something else
+  or contradicts the story. The source text is an excerpt: a detail that is simply not in the
+  excerpt (a number, a feature, a price) is NOT a mismatch;
 - "same-as": it is the same news as, or nearly the same as, a story ranked ABOVE it. Count as
   nearly the same: two routine updates from the same company's store or catalog in the same
   days, or two angles on one announcement with no new facts. Name that story's index.
@@ -32,7 +34,7 @@ export async function reviewDraft(
       { role: "system", content: SYSTEM },
       {
         role: "user",
-        content: JSON.stringify(drafts.map((d, i) => ({ index: i, headline: d.headline, summary: d.summary, sourceTitle: d.source.title, sourceText: d.source.text.slice(0, 600) }))),
+        content: JSON.stringify(drafts.map((d, i) => ({ index: i, headline: d.headline, summary: d.summary, sourceTitle: d.source.title, sourceText: d.source.text.slice(0, 2000) }))),
       },
     ],
     { maxTokens: 8000, note: `review ${drafts.length} drafted stories` },
