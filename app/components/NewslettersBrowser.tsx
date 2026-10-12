@@ -4,7 +4,7 @@ import Link from "next/link";
 import { LayoutGrid, List, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Story } from "@/lib/core/types";
-import { Collage, IssueBars } from "./visuals";
+import { Collage } from "./visuals";
 import { shortDate } from "./ui";
 
 export type NewsletterCard = {
@@ -19,7 +19,6 @@ export type NewsletterCard = {
   issueCount: number;
   storyCount: number;
   learned: number;
-  bars: { id: string; date: string; stories: number }[];
   delivery: string;
   paused: boolean;
   language: string;
@@ -164,13 +163,12 @@ function GridCard({ c }: { c: NewsletterCard }) {
               {c.themes.map((t) => <li key={t} className="rounded-full border border-rule px-2 py-0.5 text-xs text-stone-600 dark:text-stone-400">{t}</li>)}
             </ul>
           )}
-          <div className="mt-4 flex items-end justify-between gap-4 border-t border-rule pt-4">
+          <div className="mt-4 border-t border-rule pt-4">
             <dl className="grid grid-cols-3 gap-4 text-sm">
               <div><dt className="text-xs text-stone-500">Issues</dt><dd className="font-semibold tabular-nums">{c.issueCount}</dd></div>
               <div><dt className="text-xs text-stone-500">Stories</dt><dd className="font-semibold tabular-nums">{c.storyCount}</dd></div>
               <div><dt className="text-xs text-stone-500">Learned</dt><dd className="font-semibold tabular-nums">{c.learned}</dd></div>
             </dl>
-            {c.bars.length > 1 && <IssueBars issues={c.bars} />}
           </div>
           <p className="mt-3 text-xs text-stone-500"><Meta c={c} /></p>
         </div>

@@ -25,7 +25,6 @@ export default async function Newsletters() {
         issueCount: issues.length,
         storyCount: nl.memory.covered.length,
         learned: nl.memory.likes.length + nl.memory.dislikes.length,
-        bars: issues.map((i) => ({ id: i.id, date: i.date, stories: i.stories.length })),
         delivery: describeDelivery(deliveryOf(nl)),
         paused: isPaused(nl),
         language: LANGUAGE_NAMES[nl.profile.language] ?? nl.profile.language,

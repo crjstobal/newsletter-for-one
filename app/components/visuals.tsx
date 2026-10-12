@@ -242,16 +242,3 @@ export function Collage({ stories, className = "" }: { stories: Story[]; classNa
     </div>
   );
 }
-
-/** Stories per issue, oldest to newest. */
-export function IssueBars({ issues }: { issues: { id: string; date: string; stories: number }[] }) {
-  const last = [...issues].reverse().slice(-10);
-  const max = Math.max(1, ...last.map((i) => i.stories));
-  return (
-    <div className="flex h-8 items-end gap-1" aria-label="Stories per issue">
-      {last.map((i) => (
-        <div key={i.id} title={`${i.date}: ${i.stories} stories`} className="w-2 rounded-sm bg-stone-300 dark:bg-stone-600" style={{ height: `${Math.max(12, (i.stories / max) * 100)}%` }} />
-      ))}
-    </div>
-  );
-}
