@@ -47,13 +47,13 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 | Verify dates | Page metadata, no model | YouTube upload date; Reddit is never contacted (blocks without API key), dated by the search window |
 | Filter | Rules | Drops wrong language, too old, undated (unless allowed), low score, blocked |
 | Check memory | Nemotron 3.5 Lightning | Whole history in context, no RAG needed at this scale; failure degrades to exact key match |
-| Write | Nemotron 3 Ultra | Max 2 stories per publisher; style preset, jokes, "by the numbers"; `alsoIn` = other sources with the same news (coverage = importance) |
+| Write | Nemotron 3 Ultra | Max 2 stories per publisher; length, voice, jokes; `alsoIn` = other sources with the same news (coverage = importance) |
 
 - After writing, `reviewDraft` (Nano, reasoning on) cuts stories that misreport their source or nearly repeat one above; reserves fill the gap. Added 2026-10-05 after a Nintendo headline linked to another story's patch notes.
-- Style = length (`rundown | straight | dense | deep`) + voice (`neutral | playful`) + extras (jokes, visual summary, mind map). Old "playful"/"brief" presets are read through `normalizeStyle`.
+- Style = length (`rundown | straight | dense | deep`) + voice (`neutral | playful`) + extras (jokes, mind map). The visual summary and "by the numbers" were dropped 2026-10-05. Old "playful"/"brief" presets are read through `normalizeStyle`.
 - Reasoning off (`thinking: false` -> `chat_template_kwargs.enable_thinking=false`) only for mechanical jobs. Measured 2026-10-05: Lightning without reasoning got "same news?" wrong. Never for dedup.
 - Subscriptions (`lib/subscriptions.ts`): each newsletter has an inbox address `<inbox_token>@INBOX_DOMAIN`; inbound mail must be POSTed to `/api/inbound/email?key=INBOUND_SECRET` (any provider; payload normalized in `lib/adapters/email.ts`). Podcasts and sites by RSS (`lib/adapters/feeds.ts`, Apple Podcasts search, no key). Token Factory has no speech-to-text: podcasts use the publisher's `<podcast:transcript>` or show notes.
-- Delivery: days of the week + hour + time zone (`lib/core/schedule.ts`), at most one issue a day. Pause keeps everything; resume either catches up (window from last issue) or starts fresh (`window_floor`). Schedule workflow is hourly now.
+- Delivery: days of the week + hour + time zone (`lib/core/schedule.ts`), at most one issue a day. Pause keeps everything; resume either catches up (window from last issue) or starts fresh (`window_floor`). Production schedule is every 5 days while testing (see below).
 - Clicks: story links go through `/r/<issueId>/<index>`; `readingSignals()` turns them into opened/shown per theme and publisher for planner and editor. Computed, never stored in memory.
 - Product vs jury (decided 2026-10-05): reader tabs are Issue, Sources, Settings. "Under the hood" (trace, costs, checks, the brief, reset memory) is set apart for the jury and becomes internal later. Costs never appear in reader views. Spending and schedule live at `/admin`.
 - Public demo: anyone reads; every write/paid API route calls `denyWithoutAccess()` (`lib/access.ts`). Set `DEMO_ACCESS_CODE` in production and put the code in the Devpost testing instructions. Unset locally = open.
@@ -62,39 +62,35 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 - Only NVIDIA models on Nebius Token Factory are allowed by the rules. Model per role in `lib/adapters/nebius.ts`.
 - Core in `lib/core` is vendor-free; adapters in `lib/adapters` (house rule of the HACKATON folder).
 - Daily spending cap (`lib/budget.ts`, `DAILY_CAP_EUR=5`): everything paid reserves an estimate, then settles the real cost.
-- Automatic issues (`lib/worker.ts`) are off by default per newsletter.
 - Nebius Jobs have no native schedule: `.github/workflows/schedule.yml` launches the worker job every 5 days (06:05 UTC) while testing, 3 newsletters in parallel (`WORKER_PARALLEL`). Inactive until repo variable `NEBIUS_JOBS_ENABLED=true`.
 - A typical issue: about $0.19 ($0.14 Tavily) and 3 to 5 minutes. Slow is fine: it's a newsletter.
 - Record every platform friction in `FEEDBACK.md` with date and repro as it happens (required for submission, and a prize).
 
-## What's next, in order
+## What's next, in order (updated 2026-10-13)
 
-1. **Broad topics.** Only niches were tested (Final Cut Pro, Godot, espresso). Measure first:
-   create "Marketing", "AI" and "Pesca en España" (Spanish) test newsletters, one issue each
-   (about EUR 0.60), and read the traces. Expected problems: too much material and no sense of
-   importance (AI), vague briefs (Marketing), few dated sources and too short a window (fishing).
-   Planned fixes, after measuring: clarifying questions at creation for broad descriptions;
-   sections (sub-beats) per broad brief; importance from coverage count (duplicates + foundBy);
-   monthly cadence and honest quiet issues.
-2. **Email delivery** with useful / not useful links in the email itself. This is the "acts on
-   your behalf" part the judges named as the ceiling of the Personal AI track.
-3. **Deploy** (the demo URL is mandatory in this track): hosted Postgres reachable from the web
-   host and from the Nebius job; web host for the Next.js app; Nebius AI Cloud account with a
-   service account, then fill the variables and secrets listed at the top of `schedule.yml`.
-   The worker image and schedule have never run yet (no Docker or AI Cloud account locally).
-4. **Public demo safety:** a few ready-made example newsletters, minimal identity for readers
-   (email magic link or none), and per-visitor limits on top of the daily cap.
-5. **Submission:** make the repo public, run
-   `git log -p | grep -iE 'api[_-]?key|secret|token'`, finish `FEEDBACK.md` (five questions per
-   piece: Token Factory and each Nemotron model), a 3 minute video with audio naming the models
-   and why, and name Nebius Token Factory and Nemotron in the description and Built With.
+Done: deploy (n41.javi.link), Nebius Jobs, final review step. Email delivery is out of scope for
+the hackathon (decided 2026-10-11).
+
+1. **Broad topics.** Only niches and AI were tested. Create a "Marketing" test newsletter, write
+   one issue (about $0.20) and read the trace. Planned fixes after measuring: clarifying
+   questions for broad descriptions, sub-beats, importance from coverage count.
+2. **FEEDBACK.md**: answer the five questions for Token Factory, AI Cloud Jobs and each Nemotron
+   model (onboarding and "would we build with it again" are missing). It is pasted into the
+   Devpost submission.
+3. **Mobile check** of the live site.
+4. **Submission:** license decision (MIT now; AGPL considered), make the repo public after
+   `git log -p | grep -iE 'api[_-]?key|secret|token'`, Devpost text (name Nebius Token Factory,
+   AI Cloud Jobs and the Nemotron models in description and Built With), testing instructions
+   with the access code, 3 minute video with audio naming the models and why. Draft script:
+   `../Script para video.txt`.
 
 ## Known issues
 
 - Inbound email needs a real domain with MX to an inbound provider before it works outside
   localhost. Locally, use "Paste an email" in Subscriptions or POST to the webhook.
-- The hourly schedule launches a Nebius Job every hour even when nothing is due. Cheap, but the
-  check could move into the GitHub Action before launching.
+- An hourly schedule would launch a Nebius Job every hour even when nothing is due. Cheap, but
+  the check could move into the GitHub Action before launching.
+- Nebius project `default-project-eu-north1` has 0 non-GPU vCPU quota: jobs run in eu-west1.
 - Lightning sometimes returns broken JSON or its reasoning instead of JSON; the adapter retries
   once showing the model its own output. Watch for it in traces.
 - A recent source can report old news (a 2026-09 video about a fix released in May). Triage
