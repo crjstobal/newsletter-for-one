@@ -84,6 +84,14 @@ the hackathon (decided 2026-10-11).
    with the access code, 3 minute video with audio naming the models and why. Draft script:
    `../Script para video.txt`.
 
+## The video
+
+Remotion template `N41HackathonFilm` in `/Users/javi/_DEV/VIDEOS_DEV/Remotion_Batch_videos`
+(src/templates/N41HackathonFilm: `script.ts` holds scenes and subtitles in seconds). Screens are
+2x screenshots of the live app from `scripts/n41-capture.py` (writes stubbed, costs nothing);
+`npx tsx scripts/n41-srt.ts` writes the SRT and the voice-over sheet to the Desktop. Render:
+`npx remotion render src/index.ts N41HackathonFilm ~/Desktop/n41-hackathon-film.mp4`.
+
 ## Known issues
 
 - Inbound email needs a real domain with MX to an inbound provider before it works outside
