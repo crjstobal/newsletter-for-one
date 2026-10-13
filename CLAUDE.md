@@ -89,7 +89,9 @@ the hackathon (decided 2026-10-11).
 Remotion template `N41HackathonFilm` in `/Users/javi/_DEV/VIDEOS_DEV/Remotion_Batch_videos`
 (src/templates/N41HackathonFilm: `script.ts` holds scenes and subtitles in seconds). Screens are
 2x screenshots of the live app from `scripts/n41-capture.py` (writes stubbed, costs nothing);
-`npx tsx scripts/n41-srt.ts` writes the SRT and the voice-over sheet to the Desktop. Render:
+`npx tsx scripts/n41-voice.ts` records the ElevenLabs voice (one clip per line, cached; the voice
+re-times the whole film, see `retime()` in script.ts); `npx tsx scripts/n41-srt.ts` writes the
+SRT and the reading sheet to the Desktop. Must stay under 3:00 (2:56 on 2026-10-13). Render:
 `npx remotion render src/index.ts N41HackathonFilm ~/Desktop/n41-hackathon-film.mp4`.
 
 ## Known issues
