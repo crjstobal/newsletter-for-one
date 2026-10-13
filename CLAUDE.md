@@ -23,6 +23,15 @@ npm run worker          # writes every automatic newsletter that is due, once
 npm run cli -- issue <newsletterId>
 ```
 
+Production (since 2026-10-13): web at https://n41.javi.link (Vercel Hobby, project
+`newsletter-for-one`; CNAME `n41` in the javi.link Route 53 zone, AWS profile `default`). Vercel
+env: DATABASE_URL (Supabase transaction pooler, port 6543), NEBIUS_API_KEY, TAVILY_API_KEY,
+DEMO_ACCESS_CODE, GH_DISPATCH_TOKEN. "Write one now" dispatches the schedule workflow with a
+newsletter id and a Nebius job (project eu-west1, service account n41-scheduler, CLI profile
+`n41-sa`) writes it. Deploy: until Javi connects GitHub in Vercel, deploys from git metadata are
+refused (commit author not on the team), so deploy from `git archive HEAD` plus `.vercel/`.
+`vercel link` writes a `.env.local`: delete it.
+
 Secrets come from env vars or AWS SSM (`lib/secrets.ts`, profile `servikaki-secrets`,
 `/servikaki/secrets/nebius.env` and `tavily.env`). Never write keys to disk or to `.env` files.
 
