@@ -53,7 +53,7 @@ export function SiteFooter() {
         <div className="max-w-sm space-y-2">
           <Wordmark />
           <p>Personal newsletters researched and written by an agent that checks every date and learns what you care about.</p>
-          <p className="text-xs text-stone-500">Built for the Nebius x NVIDIA Global AI Hackathon, Personal AI track. Open source.</p>
+          <p className="text-xs text-stone-500">Built for the Nebius x NVIDIA Global AI Hackathon, Best Apps and Agents track. Open source.</p>
         </div>
         <div>
           <p className="mb-2 font-semibold text-ink">Product</p>

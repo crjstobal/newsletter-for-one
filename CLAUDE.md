@@ -3,7 +3,7 @@
 # Newsletter for One
 
 Personal newsletters researched and written by an agent. Entry for the Nebius x NVIDIA Global AI
-Hackathon, **Personal AI** track. Deadline **2026-10-30 10:00 PDT (18:00 Madrid)**. Rules, prizes
+Hackathon, **Best Apps and Agents** track (switched from Personal AI on 2026-10-13: its brief asks for NemoClaw, OpenShell and Hermes; ours describes a self-running workflow with Ultra, Nano and Serverless Jobs). Deadline **2026-10-30 10:00 PDT (18:00 Madrid)**. Rules, prizes
 and judging notes live one folder up: `../BRIEF.md`, `../SUBMISSION.md`, `../STACK.md`.
 
 Everything in this repo is English (it becomes public for the submission). No em dashes.

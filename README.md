@@ -4,7 +4,7 @@
 the sources you follow, tells each piece of news once, and writes it the way you like to read,
 on the days you choose.**
 
-Built for the Nebius x NVIDIA Global AI Hackathon, **Personal AI** track, with NVIDIA Nemotron
+Built for the Nebius x NVIDIA Global AI Hackathon, **Best Apps and Agents** track, with NVIDIA Nemotron
 models on **Nebius Token Factory** and **Nebius AI Cloud Serverless Jobs**.
 
 **Live demo: https://n41.javi.link** (read-only for visitors; the access code to create
