@@ -47,6 +47,7 @@ export default function NewsletterPage() {
   const autoWrite = useRef(false);
 
   const [running, setRunning] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [log, setLog] = useState<{ t: string; step: string; detail?: string }[]>([]);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -100,8 +101,28 @@ export default function NewsletterPage() {
     setJustCreated(false);
     const started = Date.now();
     try {
+      const before = current?.issues.length ?? 0;
       const res = await send(`/api/newsletters/${id}/issues`, "POST");
       if (!res) return;
+      // Production: a Nebius job writes it. Poll until the new issue shows up.
+      if (res.headers.get("content-type")?.includes("application/json")) {
+        setQueued(true);
+        setLog([{ t: "0s", step: "nebius", detail: "handed to a Nebius Serverless Job" }]);
+        const deadline = Date.now() + 20 * 60_000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 15_000));
+          const r = await fetch(`/api/newsletters/${id}`, { cache: "no-store" });
+          if (!r.ok) continue;
+          const data = (await r.json()) as { newsletter: Newsletter; issues: Issue[] };
+          if (data.issues.length > before) {
+            setCurrent(data);
+            setIssueIdx(0);
+            router.refresh();
+            return;
+          }
+        }
+        throw new Error("the Nebius job is taking longer than usual. Come back in a few minutes: the issue will be here.");
+      }
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -126,6 +147,7 @@ export default function NewsletterPage() {
       setProblem({ message: `The issue couldn't be finished: ${(err as Error).message}` });
     } finally {
       setRunning(false);
+      setQueued(false);
     }
   }
 
@@ -233,7 +255,9 @@ export default function NewsletterPage() {
               {running && (
                 <Gummy
                   message={current?.issues.length ? "Nemotron is writing your next issue" : "Nemotron is writing your first issue"}
-                  detail="Searching the web, checking every date and dropping repeats. A few minutes: it's a newsletter, not a chat."
+                  detail={queued
+                    ? "It runs on a Nebius Serverless Job: searching the web, checking every date and dropping repeats. About 6 minutes. This page updates by itself, and you can close it and come back."
+                    : "Searching the web, checking every date and dropping repeats. A few minutes: it's a newsletter, not a chat."}
                 />
               )}
               <ol className="flex flex-wrap items-center gap-2 text-sm">

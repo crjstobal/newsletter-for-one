@@ -15,12 +15,24 @@ on:
   schedule:
     - cron: "5 6 */5 * *" # 06:05 UTC (08:05 in Madrid) every 5 days
   workflow_dispatch:
+    inputs:
+      newsletter:
+        description: "Write only this newsletter now (its id). Empty: every newsletter that is due."
+        required: false
+        default: ""
 
 jobs:
   launch:
     if: vars.NEBIUS_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Validate the newsletter id
+        env:
+          NEWSLETTER: ${{ inputs.newsletter }}
+        run: |
+          # Comes from the web app: only ids made of the characters slugs use.
+          [[ -z "$NEWSLETTER" || "$NEWSLETTER" =~ ^[a-z0-9-]{1,80}$ ]] || { echo "::error::invalid newsletter id"; exit 1; }
+
       - name: Check that GHCR_TOKEN can pull the worker image
         env:
           TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -71,4 +83,5 @@ jobs:
             --env "NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}" \
             --env "TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}" \
             --env "DAILY_CAP_EUR=5" \
+            --env "NFO_NEWSLETTER=${{ inputs.newsletter }}" \
             --async

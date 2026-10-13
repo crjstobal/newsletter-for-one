@@ -85,3 +85,25 @@ export async function recentRuns(limit = 5): Promise<WorkerRun[]> {
     summary: x.summary ?? undefined,
   }));
 }
+
+/**
+ * One newsletter, now: what "Write one now" runs in production, inside a Nebius job launched
+ * from the web through GitHub Actions (a web request can't wait the 5 minutes an issue takes).
+ */
+export async function runOne(newsletterId: string, trigger: "cli" | "web" | "nebius-job", log: (m: string) => void = () => {}) {
+  const run = (await q<{ id: string }>("insert into worker_runs (trigger) values ($1) returning id", [trigger])).rows[0];
+  await q("update worker_runs set status = 'handed-off', finished_at = now() where trigger = 'web-queued' and summary = $1 and status = 'queued'", [newsletterId]);
+  let status = "done";
+  let summary = "";
+  try {
+    const issue = await runIssue(newsletterId, (step, detail) => log(`  ${step}${detail ? ` (${detail})` : ""}`));
+    summary = `${newsletterId}: issue ${issue.number}, ${issue.stories.length} stories, $${issue.trace.totals.costUsd.toFixed(3)}`;
+  } catch (err) {
+    status = "failed";
+    summary = `${newsletterId}: failed: ${(err as Error).message}`;
+  } finally {
+    log(summary);
+    await q("update worker_runs set finished_at = now(), status = $2, summary = $3 where id = $1", [run.id, status, summary]);
+  }
+  return { status, summary };
+}
