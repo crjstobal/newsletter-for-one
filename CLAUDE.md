@@ -28,8 +28,7 @@ Production (since 2026-10-13): web at https://n41.javi.link (Vercel Hobby, proje
 env: DATABASE_URL (Supabase transaction pooler, port 6543), NEBIUS_API_KEY, TAVILY_API_KEY,
 DEMO_ACCESS_CODE, GH_DISPATCH_TOKEN. "Write one now" dispatches the schedule workflow with a
 newsletter id and a Nebius job (project eu-west1, service account n41-scheduler, CLI profile
-`n41-sa`) writes it. Deploy: until Javi connects GitHub in Vercel, deploys from git metadata are
-refused (commit author not on the team), so deploy from `git archive HEAD` plus `.vercel/`.
+`n41-sa`) writes it. Deploy: `npx vercel deploy --prod --yes` (GitHub is connected in Vercel since 2026-10-13).
 `vercel link` writes a `.env.local`: delete it.
 
 Secrets come from env vars or AWS SSM (`lib/secrets.ts`, profile `servikaki-secrets`,
