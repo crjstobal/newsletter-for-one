@@ -2,7 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { store } from "@/lib/store";
 import type { Issue, Newsletter } from "@/lib/core/types";
-import { DEFAULT_MODELS } from "@/lib/adapters/nebius";
+import { DEFAULT_MODELS, modelPrices } from "@/lib/adapters/nebius";
+import { routingSummary } from "@/lib/core/routing";
 import { HeroForm } from "./components/HeroForm";
 import { Stamp } from "./components/ui";
 
@@ -29,6 +30,7 @@ export default async function Home() {
   const tr = demo?.issue.trace;
   const step = (key: string) => tr?.steps.find((s) => s.key === key);
   const learned = (await store.listNewsletters()).find((n) => n.memory.likes.length || n.memory.dislikes.length)?.memory;
+  const routed = tr ? routingSummary(tr, await modelPrices().catch(() => ({})), DEFAULT_MODELS.editor) : null;
 
   const HOW = [
     {
@@ -139,6 +141,12 @@ export default async function Home() {
             <p className="mt-12 text-stone-600 dark:text-stone-400">
               That issue took {Math.round(tr.totals.ms / 1000)} seconds and cost ${tr.totals.costUsd.toFixed(2)}: $
               {tr.totals.tavilyUsd.toFixed(2)} of web search and ${tr.totals.nebiusUsd.toFixed(3)} of Nemotron.{" "}
+              {routed?.baselineUsd && routed.times && routed.times > 1 ? (
+                <>
+                  Running every call on {model(DEFAULT_MODELS.editor)} would have cost ${routed.baselineUsd.toFixed(3)} of
+                  Nemotron, {routed.times.toFixed(1)} times more.{" "}
+                </>
+              ) : null}
               <Link href="/newsletters" className="font-semibold text-stamp underline-offset-4 hover:underline">
                 Every issue shows its full trace.
               </Link>

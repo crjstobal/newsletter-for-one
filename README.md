@@ -62,6 +62,64 @@ that fits its cost and context needs:
 Prices are read live from Token Factory's `/v1/models` endpoint, so every trace shows real
 costs. A typical issue costs about **$0.19**: about $0.14 of Tavily search and $0.05 of Nemotron.
 
+Routing is what keeps it that cheap. Every issue's trace has a **Model routing** card: which
+Nemotron did which job, its share of the cost, and what the same calls would have cost on
+Ultra alone. On issue 3 of a handheld-consoles newsletter (2026-10-21), routed Nemotron cost $0.068;
+the same tokens on Ultra would have cost $0.41, six times more, before counting the extra reasoning tokens a
+bigger model spends.
+
+## Tavily: the live web, searched the way a researcher would
+
+Nothing is pasted in. Each issue starts from a plan (Nemotron 3.5 Lightning) and Tavily runs
+it (9 searches for that handheld-consoles issue). Each kind of search is a different Tavily configuration
+([`lib/adapters/tavily.ts`](lib/adapters/tavily.ts)):
+
+| Search kind | Tavily settings | Why |
+|-------------|-----------------|-----|
+| News | `topic: "news"` | Press coverage of launches and announcements |
+| Web | `topic: "general"` | Blogs, changelogs and official sites that news search misses |
+| Reddit, YouTube | `include_domains` limited to that site | Community discussion and new videos, kept as their own kind so the trace shows where a story came from |
+| Your sources | `include_domains` = the reader's trusted sites | One extra search per issue over the sites the reader chose |
+
+Every search uses `search_depth: "advanced"` with `chunks_per_source: 3`, `max_results: 20`
+(Tavily charges per search, not per result), `start_date` set to the date of the previous
+issue, `language` with `filter_by_language` for the newsletter's languages, and
+`exclude_domains` with the reader's blocked sites plus social networks (their pages can't be
+opened to verify a date). The trace lists every search, its parameters, how many results it
+returned and how many ended up in the issue, so a reader can see which searches earn their cost.
+
+## What we learned building it
+
+- **Reasoning off is a cost lever, not a free one.** `chat_template_kwargs: {enable_thinking:
+  false}` cut output tokens about 100 times on mechanical jobs (splitting a 38K-character
+  transcript: 2.1 s, $0.0006). But asked whether two differently worded iPhone headlines were
+  the same news, Lightning said yes with reasoning and no without it. Judgment calls keep
+  reasoning on.
+- **The biggest model was the faster editor.** Ultra replaced Super as the writer: 5.8 s
+  against 16 s on the same issue, more specific writing, about $0.004 more.
+- **Search engines date pages badly.** A query about this week happily returns a plugin page
+  from 2016. Every promising result is opened and its real publication date read from the page;
+  no verified date, no story.
+- **A recent source can report old news.** A video from this month about a fix shipped in May
+  passes the date check. Scoring should also judge when the event happened (see limitations).
+- **Coverage is a signal.** When several searches find the same news, it is usually a big
+  story, so the issue says which other sources covered it.
+
+## Known limitations
+
+- **Broad topics are weaker than niches.** Tested mostly on niches (handheld consoles, Final Cut
+  Pro, Godot, espresso). A brief like "Marketing" or "AI" returns more material than the scorer
+  can rank by importance, so issues get more generic.
+- **Undated sources are dropped by default.** Small sites without date metadata are left out
+  unless the reader allows undated results, which can make local or slow topics thin.
+- **Event date vs publication date.** Only the publication date is checked; old news in a new
+  article can still slip through.
+- **Reddit posts are dated by the search window**, not exactly: Reddit blocks automated access
+  without an API key.
+- **Podcasts and your other newsletters** are built but switched off (see Coming soon): Token
+  Factory has no speech-to-text model, and inbound email needs a domain with MX records.
+- **One issue takes 3 to 6 minutes.** Fine for a newsletter, slow for a live demo.
+
 ## Nebius AI Cloud: Serverless Jobs
 
 Issues are written in the background by a **Nebius Serverless AI Job** on a small CPU VM, billed
@@ -75,7 +133,7 @@ only for the minutes it runs:
 - The image is built by [`worker-image.yml`](.github/workflows/worker-image.yml) on every
   change to the worker.
 
-Everything that costs money goes through a **daily spending cap** (`DAILY_CAP_EUR`, default 5):
+Everything that costs money goes through a **daily spending cap** (`DAILY_CAP_EUR`, default 20):
 work reserves its estimated cost before starting and settles the real cost when done, so the web
 app, the command line and the jobs together can never go over it.
 
@@ -125,7 +183,7 @@ Configuration:
 | `TAVILY_API_KEY` | web, job | Tavily API key |
 | `DEMO_ACCESS_CODE` | web | Code visitors enter to create newsletters and write issues |
 | `GH_DISPATCH_TOKEN` | web | GitHub token allowed to run the schedule workflow ("Write one now") |
-| `DAILY_CAP_EUR` | web, job | Daily spending cap, default 5 |
+| `DAILY_CAP_EUR` | web, job | Daily spending cap, default 20 |
 | `NEBIUS_JOBS_ENABLED`, `NEBIUS_PROJECT_ID`, `NEBIUS_SA_ID`, `NEBIUS_PUBLIC_KEY_ID` | GitHub variables | Turn the schedule on and identify the Nebius project and service account |
 | `NEBIUS_SA_PRIVATE_KEY`, `GHCR_TOKEN` | GitHub secrets | Service account key; token to pull the worker image |
 

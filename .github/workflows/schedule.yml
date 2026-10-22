@@ -82,6 +82,6 @@ jobs:
             --env "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
             --env "NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}" \
             --env "TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}" \
-            --env "DAILY_CAP_EUR=5" \
+            --env "DAILY_CAP_EUR=20" \
             --env "NFO_NEWSLETTER=${{ inputs.newsletter }}" \
             --async

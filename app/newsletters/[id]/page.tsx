@@ -9,10 +9,11 @@ import { describeDelivery, deliveryOf, isPaused, nextSlot } from "@/lib/core/sch
 import { PauseControl, PausedBanner } from "../../components/PauseControl";
 import { SourcesPanel } from "../../components/SourcesPanel";
 import { IssueView } from "../../components/IssueView";
+import { HowItWasMade } from "../../components/HowItWasMade";
 import { UnderTheHood } from "../../components/UnderTheHood";
 import { Settings } from "../../components/Settings";
 import { UnlockForm } from "../../components/UnlockForm";
-import { Gummy } from "../../components/Gummy";
+import { Gummy, nowLine } from "../../components/Gummy";
 import { HELP } from "../../components/glossary";
 import { LANGUAGE_NAMES } from "../../components/examples";
 import { Tip, usd } from "../../components/ui";
@@ -109,11 +110,19 @@ export default function NewsletterPage() {
         setQueued(true);
         setLog([{ t: "0s", step: "nebius", detail: "handed to a Nebius Serverless Job" }]);
         const deadline = Date.now() + 20 * 60_000;
+        let seen = "";
         while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 15_000));
+          await new Promise((r) => setTimeout(r, 5_000));
           const r = await fetch(`/api/newsletters/${id}`, { cache: "no-store" });
           if (!r.ok) continue;
-          const data = (await r.json()) as { newsletter: Newsletter; issues: Issue[] };
+          const data = (await r.json()) as { newsletter: Newsletter; issues: Issue[]; progress: { step: string; detail: string | null } | null };
+          // The job writes each step to the database; show it as it would stream locally.
+          const p = data.progress;
+          if (p && `${p.step}|${p.detail}` !== seen) {
+            seen = `${p.step}|${p.detail}`;
+            const t = `${((Date.now() - started) / 1000).toFixed(0)}s`;
+            setLog((l) => [...l, { t, step: p.step, detail: p.detail ?? undefined }]);
+          }
           if (data.issues.length > before) {
             setCurrent(data);
             setIssueIdx(0);
@@ -258,6 +267,8 @@ export default function NewsletterPage() {
                   detail={queued
                     ? "It runs on a Nebius Serverless Job: searching the web, checking every date and dropping repeats. About 6 minutes. This page updates by itself, and you can close it and come back."
                     : "Searching the web, checking every date and dropping repeats. A few minutes: it's a newsletter, not a chat."}
+                  step={lastStep}
+                  now={nowLine(lastStep, log.at(-1)?.detail)}
                 />
               )}
               <ol className="flex flex-wrap items-center gap-2 text-sm">
@@ -302,6 +313,7 @@ export default function NewsletterPage() {
           {tab === "issue" && !issue && !running && (
             <p className="text-stone-500">No issues yet. The first one arrives on the next delivery day, or write it now.</p>
           )}
+          {tab === "issue" && issue && !running && <HowItWasMade issue={issue} onOpenTrace={() => setTab("hood")} />}
           {tab === "issue" && issue && current && (
             <IssueView
               key={issue.id}

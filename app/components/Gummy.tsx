@@ -1,8 +1,26 @@
+/** Who works on each pipeline step, as the sign shows it, and in words for the line below. */
+const SIGN: Record<string, { who: string; doing: string; name: string }> = {
+  plan: { who: "LIGHTNING", doing: "PLANNING", name: "Nemotron 3.5 Lightning is planning the searches" },
+  search: { who: "TAVILY", doing: "SEARCHING", name: "Tavily is searching the live web" },
+  "search-error": { who: "TAVILY", doing: "SEARCHING", name: "Tavily is searching the live web" },
+  subscriptions: { who: "NANO", doing: "READING FEEDS", name: "Nemotron 3 Nano is reading your sources" },
+  triage: { who: "NANO", doing: "SCORING", name: "Nemotron 3 Nano is scoring every result" },
+  dates: { who: "NO AI", doing: "DATE CHECK", name: "Opening each page to read its real date" },
+  memory: { who: "LIGHTNING", doing: "MEMORY CHECK", name: "Nemotron 3.5 Lightning is checking what you already got" },
+  edit: { who: "ULTRA", doing: "WRITING", name: "Nemotron 3 Ultra is writing" },
+};
+
+/** One line on what is happening now, for the step a progress event reports. */
+export const nowLine = (step?: string, detail?: string) =>
+  step && SIGN[step] ? `${SIGN[step].name}${detail ? `: ${detail}` : ""}` : undefined;
+
 /**
  * The mascot that keeps the reader company while Nemotron works: a purple gummy bouncing with
- * a sign. Pure SVG and CSS; it holds still for people who prefer reduced motion.
+ * a sign that names whoever is working on the current step. Pure SVG and CSS; it holds still for
+ * people who prefer reduced motion.
  */
-export function Gummy({ message, detail }: { message: string; detail?: string }) {
+export function Gummy({ message, detail, step, now }: { message: string; detail?: string; step?: string; now?: string }) {
+  const sign = (step && SIGN[step]) || { who: "NEMOTRON", doing: "IS ON IT" };
   return (
     <div className="flex flex-col items-center py-6 text-center" role="status" aria-live="polite">
       <div className="relative h-44 w-56">
@@ -13,8 +31,8 @@ export function Gummy({ message, detail }: { message: string; detail?: string })
           <g className="gummy-sign">
             <rect x="96" y="6" width="3" height="58" rx="1.5" fill="#8a6d3b" />
             <rect x="74" y="2" width="82" height="34" rx="6" fill="#fffbea" stroke="#5b3fc4" strokeWidth="2.5" />
-            <text x="115" y="17" textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#5b3fc4" fontFamily="var(--font-sans), sans-serif">NEMOTRON</text>
-            <text x="115" y="29" textAnchor="middle" fontSize="8.5" fontWeight="600" fill="#5b3fc4" fontFamily="var(--font-sans), sans-serif">IS ON IT</text>
+            <text x="115" y="17" textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#5b3fc4" fontFamily="var(--font-sans), sans-serif">{sign.who}</text>
+            <text x="115" y="29" textAnchor="middle" fontSize={sign.doing.length > 10 ? 7.5 : 8.5} fontWeight="600" fill="#5b3fc4" fontFamily="var(--font-sans), sans-serif">{sign.doing}</text>
           </g>
           {/* body: a translucent purple jelly bear */}
           <defs>
@@ -42,6 +60,7 @@ export function Gummy({ message, detail }: { message: string; detail?: string })
         </svg>
       </div>
       <p className="mt-2 text-lg font-bold">{message}</p>
+      {now && <p className="mt-1 max-w-md text-[15px] font-semibold text-stamp">Now: {now}</p>}
       {detail && <p className="mt-1 max-w-md text-[15px] text-stone-500">{detail}</p>}
     </div>
   );

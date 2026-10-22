@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CandidateStatus, Issue } from "@/lib/core/types";
+import { routingSummary } from "@/lib/core/routing";
 import { HELP } from "./glossary";
 import { Card, DateBadge, H3, STATUS, StatusBadge, Tip, secs, usd } from "./ui";
 
@@ -9,6 +10,18 @@ const STEP_HELP: Record<string, string> = { plan: HELP.plan, subscriptions: HELP
 const ORDER: CandidateStatus[] = ["used", "shortlisted", "already-sent", "duplicate", "too-old", "no-date", "wrong-language", "low-score", "blocked", "unscored"];
 
 const shortModel = (m: string) => m.replace(/^nvidia\//, "");
+
+/** What each pipeline role does, in reader words. The final review runs under the triage role. */
+const ROLE_JOB: Record<string, string> = {
+  planner: "plans searches, writes the brief",
+  triage: "scores every result, final review",
+  dedup: "checks memory for repeats",
+  editor: "writes the issue",
+  memory: "learns from your votes",
+  extract: "splits feeds into news",
+};
+
+type Prices = { models: Record<string, string>; prices: Record<string, { prompt: number; completion: number }> };
 
 export function UnderTheHood({ issue, onDomain }: { issue: Issue; onDomain: (domain: string, list: "domains" | "blockedDomains") => void }) {
   const tr = issue.trace;
@@ -42,6 +55,8 @@ export function UnderTheHood({ issue, onDomain }: { issue: Issue; onDomain: (dom
           <Stat label={<Tip text={HELP.window}>Window</Tip>} value={tr.window.since.slice(5)} sub={`to ${tr.window.until}`} />
         </div>
       </Card>
+
+      <ModelRouting issue={issue} />
 
       {/* Flow */}
       <Card>
@@ -203,6 +218,48 @@ export function UnderTheHood({ issue, onDomain }: { issue: Issue; onDomain: (dom
         </div>
       </Card>
     </div>
+  );
+}
+
+/** Which Nemotron did which job, and what routing saved against running everything on Ultra. */
+function ModelRouting({ issue }: { issue: Issue }) {
+  const [p, setP] = useState<Prices | null>(null);
+  useEffect(() => {
+    fetch("/api/prices").then((r) => (r.ok ? r.json() : null)).then(setP).catch(() => setP(null));
+  }, []);
+  const r = useMemo(() => routingSummary(issue.trace, p?.prices ?? {}, p?.models.editor ?? ""), [issue.trace, p]);
+  if (!r.models.length) return null;
+
+  return (
+    <Card>
+      <H3><Tip text={HELP.routing}>Model routing</Tip></H3>
+      <ul className="space-y-3">
+        {r.models.map((m) => (
+          <li key={m.model} className="grid gap-1 text-sm sm:grid-cols-[15rem_1fr_6rem] sm:items-center sm:gap-4">
+            <div>
+              <div className="font-mono text-[12px] font-semibold">{shortModel(m.model)}</div>
+              <div className="text-xs text-stone-500">{m.roles.map((x) => ROLE_JOB[x] ?? x).join("; ")}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-stone-100 dark:bg-stone-800">
+                <div className="h-full rounded-full bg-stamp" style={{ width: `${Math.max(2, m.share * 100)}%` }} />
+              </div>
+              <span className="w-10 text-right font-mono text-[11px] text-stone-500">{Math.round(m.share * 100)}%</span>
+            </div>
+            <div className="font-mono text-[11px] text-stone-500 sm:text-right">
+              {m.calls} call{m.calls === 1 ? "" : "s"} · {usd(m.costUsd)}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {r.baselineUsd !== null && r.times !== null && r.times > 1 && (
+        <p className="mt-4 rounded-md bg-stamp-soft px-3 py-2 text-sm">
+          Routed: <b className="font-mono">{usd(r.actualUsd)}</b> of Nemotron. The same calls on {shortModel(r.baselineModel)} alone:{" "}
+          <b className="font-mono">{usd(r.baselineUsd)}</b>, about <b>{r.times.toFixed(1)}x</b> more, before counting the extra
+          reasoning tokens and time a bigger model spends.
+        </p>
+      )}
+    </Card>
   );
 }
 

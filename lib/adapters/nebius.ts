@@ -24,7 +24,7 @@ export const DEFAULT_MODELS: Record<Role, string> = {
   extract: process.env.MODEL_EXTRACT ?? "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
 };
 
-type Price = { prompt: number; completion: number }; // USD per token
+export type Price = { prompt: number; completion: number }; // USD per token
 
 let pricing: Promise<Record<string, Price>> | null = null;
 
@@ -39,6 +39,12 @@ function loadPricing(key: string) {
     )
     .catch(() => ({}));
   return pricing;
+}
+
+/** Live prices of the models in use, so the trace can compare routing against Ultra everywhere. */
+export async function modelPrices(): Promise<Record<string, Price>> {
+  const all = await loadPricing(await getKey("nebius.env", "NEBIUS_API_KEY"));
+  return Object.fromEntries(Object.values(DEFAULT_MODELS).map((m) => [m, all[m] ?? { prompt: 0, completion: 0 }]));
 }
 
 /** Models sometimes wrap JSON in fences or add prose around it. */

@@ -5,7 +5,7 @@ import { q } from "./db";
  * Work reserves its estimated cost before starting and settles the real cost when done, so
  * concurrent runs can't jointly overshoot the cap.
  */
-export const DAILY_CAP_EUR = Number(process.env.DAILY_CAP_EUR ?? 5);
+export const DAILY_CAP_EUR = Number(process.env.DAILY_CAP_EUR ?? 20);
 /** Costs are measured in USD (provider prices); the cap is in EUR. */
 export const EUR_PER_USD = Number(process.env.EUR_PER_USD ?? 0.86);
 /** The day resets at midnight in this time zone. */

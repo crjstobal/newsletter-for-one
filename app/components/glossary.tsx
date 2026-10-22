@@ -26,6 +26,8 @@ export const HELP = {
     "Nebius cost uses the live per-token prices Token Factory publishes for each model. Tavily cost is credits used at the pay-as-you-go rate ($0.008 per credit).",
   candidates:
     "Every unique result the searches returned, and what happened to it. Use it to see why something was or was not included, and to block or prefer a source.",
+  routing:
+    "Each job goes to the cheapest Nemotron that does it well: Nano for the many small calls, Lightning where the whole history must fit in context, Ultra only for the writing the reader sees. Bars are each model's share of the Nemotron cost. The comparison prices the same tokens at Ultra's live Token Factory rate.",
   llmCalls: "Every call made to Nebius Token Factory for this issue, with the model, tokens and cost.",
   dateOrigin:
     "Green: inside the window. Red: older. '✓': verified on the page itself. Plain: from the search engine. '≈ in window': no exact date (Reddit), but the search engine only returns posts from the window. Dashed: the model read it from the text (weakest). 'no date': nobody could tell. Hover a date to see where it came from.",

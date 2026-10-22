@@ -11,6 +11,7 @@ import { produceIssue, type Progress } from "./core/issue";
 import { emptyMemory, learnFromFeedback, rememberIssue, type Reaction } from "./core/memory";
 import { store as defaultStore, type Store } from "./store";
 import { reserve, settle, type SpendKind } from "./budget";
+import { q } from "./db";
 
 /** Application service: wires adapters and storage around the vendor-free core. */
 
@@ -67,11 +68,39 @@ export async function runIssue(newsletterId: string, progress?: Progress, store:
   // What the reader actually opens steers this issue too (computed from clicks, never stored).
   const reads = await readingSignals(newsletterId).catch(() => []);
   const withReads = { ...nl, memory: { ...nl.memory, reads } };
-  const issue = await metered("issue", newsletterId, (d) => produceIssue({ ...d, subscriptions: pgSubscriptions(newsletterId) }, withReads, progress), (i) => i.id);
-  issue.number = (await store.listIssues(newsletterId)).length + 1;
-  await store.saveIssue(issue);
-  await store.saveNewsletter({ ...nl, memory: rememberIssue(nl.memory, issue), lastIssueDate: issue.date });
-  return issue;
+  // Every step is also written to the database, so the web app can show a Nebius job's progress.
+  const tracked: Progress = (step, detail) => {
+    progress?.(step, detail);
+    void saveProgress(newsletterId, step, detail);
+  };
+  try {
+    const issue = await metered("issue", newsletterId, (d) => produceIssue({ ...d, subscriptions: pgSubscriptions(newsletterId) }, withReads, tracked), (i) => i.id);
+    issue.number = (await store.listIssues(newsletterId)).length + 1;
+    await store.saveIssue(issue);
+    await store.saveNewsletter({ ...nl, memory: rememberIssue(nl.memory, issue), lastIssueDate: issue.date });
+    return issue;
+  } finally {
+    await q("delete from issue_progress where newsletter_id = $1", [newsletterId]).catch(() => {});
+  }
+}
+
+/** Best effort: progress is a courtesy for the page, never a reason to fail an issue. */
+async function saveProgress(newsletterId: string, step: string, detail?: string) {
+  await q(
+    `insert into issue_progress (newsletter_id, step, detail, at) values ($1, $2, $3, now())
+     on conflict (newsletter_id) do update set step = excluded.step, detail = excluded.detail, at = now()`,
+    [newsletterId, step, detail ?? null],
+  ).catch(() => {});
+}
+
+/** The step an issue is on right now, if one is being written. */
+export async function currentProgress(newsletterId: string): Promise<{ step: string; detail: string | null; at: string } | null> {
+  const r = await q<{ step: string; detail: string | null; at: Date }>(
+    "select step, detail, at from issue_progress where newsletter_id = $1 and at > now() - interval '30 minutes'",
+    [newsletterId],
+  ).catch(() => null);
+  const row = r?.rows[0];
+  return row ? { step: row.step, detail: row.detail, at: row.at.toISOString() } : null;
 }
 
 export type Vote = { storyIndex: number; vote: "up" | "down"; note?: string };
