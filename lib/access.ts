@@ -8,6 +8,11 @@ import { cookies } from "next/headers";
  */
 export const ACCESS_COOKIE = "n41_access";
 
+/** Unlocks for 30 days. Shared by the code form and the judges' link (/try/<code>). */
+export const ACCESS_COOKIE_OPTIONS = { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 30, path: "/" } as const;
+
+export const isAccessCode = (code: string | undefined) => Boolean(process.env.DEMO_ACCESS_CODE) && code?.trim() === process.env.DEMO_ACCESS_CODE;
+
 export async function hasAccess(): Promise<boolean> {
   const code = process.env.DEMO_ACCESS_CODE;
   if (!code) return true;
