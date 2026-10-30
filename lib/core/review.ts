@@ -19,7 +19,7 @@ Return JSON: {"flags": [{"index": number, "problem": "mismatch" | "same-as", "sa
 export type ReviewFlag = { index: number; problem: "mismatch" | "same-as"; sameAs?: number; why: string; headline?: string; sameAsHeadline?: string };
 
 /**
- * A cheap second opinion on the editor's draft (Nemotron 3 Nano, reasoning on: it is a
+ * A cheap second opinion on the editor's draft (Nemotron 3.5 Lightning, reasoning on: it is a
  * judgment call). Caught in testing: a headline about one Nintendo announcement linked to the
  * patch notes of another, next to a near-identical store update.
  */

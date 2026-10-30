@@ -5,11 +5,11 @@ export const HELP = {
   plan:
     "Nemotron 3.5 Lightning reads your brief, what you liked and disliked, and every story already sent, then decides what to search for this issue. Its 1M-token context lets it see your whole history.",
   subscriptions:
-    "Your own newsletters, podcasts and feeds: everything they published in the window is split into separate pieces of news by Nemotron 3 Nano with reasoning turned off (a mechanical job, about 100 times fewer tokens), cached per item, then merged with the web results. The same news from several sources becomes one story that says who else covered it.",
+    "Your own newsletters, podcasts and feeds: everything they published in the window is split into separate pieces of news by Nemotron 3.5 Lightning with reasoning turned off (a mechanical job, about 100 times fewer tokens), cached per item, then merged with the web results. The same news from several sources becomes one story that says who else covered it.",
   search:
     "Tavily runs every planned search on the live web, restricted to the window. 'news' searches press, 'web' blogs and official sites, 'reddit' and 'youtube' only those sites, 'sources' only your preferred sources. Advanced depth costs 2 credits per search.",
   triage:
-    "Nemotron 3 Nano, the cheapest model, reads every unique result in parallel batches of 20 and scores it 0 to 10 for this reader. It also labels the real-world event behind it, so different articles about the same thing can be grouped.",
+    "Nemotron 3.5 Lightning, the cheapest model, reads every unique result in parallel batches of 20 and scores it 0 to 10 for this reader. It also labels the real-world event behind it, so different articles about the same thing can be grouped.",
   dates:
     "For every promising result without a search-engine date, the page itself is opened and reads its real publication date: YouTube's upload date, or the page's own metadata elsewhere. Reddit is never contacted: it blocks automated access without an API key. No model, no guessing. Free.",
   filter:
@@ -27,7 +27,7 @@ export const HELP = {
   candidates:
     "Every unique result the searches returned, and what happened to it. Use it to see why something was or was not included, and to block or prefer a source.",
   routing:
-    "Each job goes to the cheapest Nemotron that does it well: Nano for the many small calls, Lightning where the whole history must fit in context, Ultra only for the writing the reader sees. Bars are each model's share of the Nemotron cost. The comparison prices the same tokens at Ultra's live Token Factory rate.",
+    "Each job goes to the cheapest Nemotron that does it well: Lightning for the many small calls and wherever the whole history must fit in context, Ultra only for the writing the reader sees. Bars are each model's share of the Nemotron cost. The comparison prices the same tokens at Ultra's live Token Factory rate.",
   llmCalls: "Every call made to Nebius Token Factory for this issue, with the model, tokens and cost.",
   dateOrigin:
     "Green: inside the window. Red: older. '✓': verified on the page itself. Plain: from the search engine. '≈ in window': no exact date (Reddit), but the search engine only returns posts from the window. Dashed: the model read it from the text (weakest). 'no date': nobody could tell. Hover a date to see where it came from.",

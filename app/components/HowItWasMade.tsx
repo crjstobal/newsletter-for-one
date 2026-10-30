@@ -33,12 +33,14 @@ export function HowItWasMade({ issue, onOpenTrace }: { issue: Issue; onOpenTrace
     }
   };
   const tr = issue.trace;
+  // Issues before 2026-10-30 were scored by Nano (retired by Token Factory); newer ones by Lightning.
+  const scorer = tr.steps.find((s) => s.key === "triage")?.tool.includes("Nano") ? "Nemotron 3 Nano" : "Nemotron 3.5 Lightning";
 
   return (
     <aside className="relative rounded-lg border border-stamp/30 bg-stamp-soft px-4 py-3 pr-10 text-[15px]">
       <p>
         <b>Nobody pasted anything into this.</b> On delivery days a Nebius Serverless Job researches and writes each issue on
-        its own. For this one, Tavily ran {tr.searches.length} live web searches, Nemotron 3 Nano scored {tr.candidates.length}{" "}
+        its own. For this one, Tavily ran {tr.searches.length} live web searches, {scorer} scored {tr.candidates.length}{" "}
         results, every date was checked on the page, and Nemotron 3 Ultra wrote the {issue.stories.length} stories that
         survived.{" "}
         <button onClick={onOpenTrace} className="font-semibold text-stamp underline-offset-4 hover:underline">

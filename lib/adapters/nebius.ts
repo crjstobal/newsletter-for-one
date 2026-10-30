@@ -10,8 +10,9 @@ const BASE_URL = process.env.NEBIUS_BASE_URL ?? "https://api.tokenfactory.nebius
 export const DEFAULT_MODELS: Record<Role, string> = {
   // 1M context at Nano pricing: reads the reader's whole history to plan searches.
   planner: process.env.MODEL_PLANNER ?? "nvidia/Nemotron-3_5-Lightning",
-  // Cheapest and fastest: scores dozens of raw search hits per issue.
-  triage: process.env.MODEL_TRIAGE ?? "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  // Cheapest tier: scores dozens of raw search hits per issue. Was Nemotron 3 Nano until Token Factory
+  // retired it (2026-11-09); Lightning is the replacement Nebius recommends, at the same price.
+  triage: process.env.MODEL_TRIAGE ?? "nvidia/Nemotron-3_5-Lightning",
   // 1M context: compares this issue's candidates against every story ever sent to the reader.
   dedup: process.env.MODEL_DEDUP ?? "nvidia/Nemotron-3_5-Lightning",
   // NVIDIA's frontier model where quality is visible to the reader: dedupes by event and writes.
@@ -20,8 +21,8 @@ export const DEFAULT_MODELS: Record<Role, string> = {
   // Long context again: folds reader feedback into a durable preference model.
   memory: process.env.MODEL_MEMORY ?? "nvidia/Nemotron-3_5-Lightning",
   // Splits newsletters and podcast transcripts into separate news items. Mechanical, so it runs
-  // with reasoning off; 256K context fits a long episode transcript.
-  extract: process.env.MODEL_EXTRACT ?? "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  // with reasoning off; 1M context fits a long episode transcript.
+  extract: process.env.MODEL_EXTRACT ?? "nvidia/Nemotron-3_5-Lightning",
 };
 
 export type Price = { prompt: number; completion: number }; // USD per token

@@ -41,15 +41,15 @@ Pipeline per issue (`lib/core/issue.ts`), every step recorded in `issue.trace`:
 | Step | Runs on | Notes |
 |------|---------|-------|
 | Plan | Nemotron 3.5 Lightning | At least half the searches name watchlist entries; reads click signals |
-| Subscriptions | Nemotron 3 Nano, reasoning off | Runs in parallel with Search. Emails, podcast transcripts and feed posts in the window, split into news items (cached in `inbox_items.extracted`); +1 score because the reader chose them |
+| Subscriptions | Nemotron 3.5 Lightning, reasoning off | Runs in parallel with Search. Emails, podcast transcripts and feed posts in the window, split into news items (cached in `inbox_items.extracted`); +1 score because the reader chose them |
 | Search | Tavily, advanced, 20 results | Language filtered; social networks excluded; trusted sites get their own search |
-| Score | Nemotron 3 Nano | Relevance 0-10, event key, source language |
+| Score | Nemotron 3.5 Lightning | Relevance 0-10, event key, source language |
 | Verify dates | Page metadata, no model | YouTube upload date; Reddit is never contacted (blocks without API key), dated by the search window |
 | Filter | Rules | Drops wrong language, too old, undated (unless allowed), low score, blocked |
 | Check memory | Nemotron 3.5 Lightning | Whole history in context, no RAG needed at this scale; failure degrades to exact key match |
 | Write | Nemotron 3 Ultra | Max 2 stories per publisher; length, voice, jokes; `alsoIn` = other sources with the same news (coverage = importance) |
 
-- After writing, `reviewDraft` (Nano, reasoning on) cuts stories that misreport their source or nearly repeat one above; reserves fill the gap. Added 2026-10-05 after a Nintendo headline linked to another story's patch notes.
+- After writing, `reviewDraft` (Lightning, reasoning on) cuts stories that misreport their source or nearly repeat one above; reserves fill the gap. Added 2026-10-05 after a Nintendo headline linked to another story's patch notes.
 - Style = length (`rundown | straight | dense | deep`) + voice (`neutral | playful`) + extras (jokes, mind map). The visual summary and "by the numbers" were dropped 2026-10-05. Old "playful"/"brief" presets are read through `normalizeStyle`.
 - Reasoning off (`thinking: false` -> `chat_template_kwargs.enable_thinking=false`) only for mechanical jobs. Measured 2026-10-05: Lightning without reasoning got "same news?" wrong. Never for dedup.
 - Subscriptions (`lib/subscriptions.ts`): each newsletter has an inbox address `<inbox_token>@INBOX_DOMAIN`; inbound mail must be POSTed to `/api/inbound/email?key=INBOUND_SECRET` (any provider; payload normalized in `lib/adapters/email.ts`). Podcasts and sites by RSS (`lib/adapters/feeds.ts`, Apple Podcasts search, no key). Token Factory has no speech-to-text: podcasts use the publisher's `<podcast:transcript>` or show notes.

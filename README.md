@@ -38,14 +38,14 @@ kept or dropped, each model call, and what all of it cost.
 | Step | What happens | Runs on |
 |------|--------------|---------|
 | Plan | Decides what to search since the last issue, naming the companies and creators to watch, steered by what you liked and what you open | Nemotron 3.5 Lightning |
-| Read your sources | New posts from the sites and YouTube channels you follow, split into separate pieces of news | Nemotron 3 Nano, reasoning off |
+| Read your sources | New posts from the sites and YouTube channels you follow, split into separate pieces of news | Nemotron 3.5 Lightning, reasoning off |
 | Search | Web, news, Reddit, YouTube and your trusted sites, limited to the window and the newsletter's languages | Tavily |
-| Score | Scores every result 0 to 10 for this reader, labels the real-world event behind it and its language | Nemotron 3 Nano |
+| Score | Scores every result 0 to 10 for this reader, labels the real-world event behind it and its language | Nemotron 3.5 Lightning |
 | Verify dates | Opens each promising page and reads its real publication date | Page metadata, no model |
 | Filter | Drops old, undated, off-language, low-score and blocked results | Rules, no model |
 | Check memory | Compares candidates with every story ever sent: the same news, however worded, is dropped | Nemotron 3.5 Lightning |
 | Write | Writes the issue in the reader's language and style, at most 2 stories per publisher, and says which other sources covered each story | Nemotron 3 Ultra |
-| Final review | Cuts drafts that misreport their source or nearly repeat a story above; reserves fill the gap | Nemotron 3 Nano |
+| Final review | Cuts drafts that misreport their source or nearly repeat a story above; reserves fill the gap | Nemotron 3.5 Lightning |
 
 ## NVIDIA Nemotron on Nebius Token Factory
 
@@ -55,9 +55,16 @@ that fits its cost and context needs:
 | Job | Model | Why this one |
 |-----|-------|--------------|
 | Brief, search planning, memory check, learning from feedback | `nvidia/Nemotron-3_5-Lightning` | 1M-token context at the lowest price: it reads the reader's whole history, so no retrieval step is needed |
-| Scoring every search result, final review | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | Cheapest and fast: runs over 100+ results per issue in parallel batches |
-| Splitting feeds into pieces of news | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, reasoning off | A mechanical job, so `chat_template_kwargs: {enable_thinking: false}`: about 100 times fewer output tokens. Judgment calls keep reasoning on: we measured that "is this the same news?" gets wrong answers without it |
+| Scoring every search result, final review | `nvidia/Nemotron-3_5-Lightning` | Cheapest tier: runs over 100+ results per issue in parallel batches |
+| Splitting feeds into pieces of news | `nvidia/Nemotron-3_5-Lightning`, reasoning off | A mechanical job, so `chat_template_kwargs: {enable_thinking: false}`: about 100 times fewer output tokens. Judgment calls keep reasoning on: we measured that "is this the same news?" gets wrong answers without it |
 | Writing the issue | `nvidia/Nemotron-3-Ultra-550b-a55b` | NVIDIA's largest model where the reader sees the quality: a few cents per issue |
+
+**Model change on 2026-10-30.** Scoring, splitting feeds and the final review ran on
+`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` during the hackathon, and the demo video shows that. Token
+Factory retires Nano on 2026-11-09, so those three jobs now run on `nvidia/Nemotron-3_5-Lightning`,
+the replacement Nebius recommends, at the same price. We tested a full issue on it before switching.
+Issues written before the change still show Nano in their trace. Any role can be pointed at another
+model with an env var (`MODEL_TRIAGE`, `MODEL_EXTRACT`, ...), no code change needed.
 
 Prices are read live from Token Factory's `/v1/models` endpoint, so every trace shows real
 costs. A typical issue costs about **$0.19**: about $0.14 of Tavily search and $0.05 of Nemotron.
